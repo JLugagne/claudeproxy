@@ -1,0 +1,48 @@
+version: 3
+workdir: .
+allow:
+  depOnAnyVendor: true
+  deepScan: false
+  ignoreNotFoundComponents: true
+
+excludeFiles:
+  - "^.*_test\\.go$"
+
+components:
+  domain:
+    in: "internal/proxy/domain/**"
+  app:
+    in: "internal/proxy/app/**"
+  inbound:
+    in: "internal/proxy/inbound/**"
+  outbound:
+    in: "internal/proxy/outbound/**"
+  context_config:
+    in: "internal/proxy/config/**"
+  infra_config:
+    in: "internal/pkg/config/**"
+  shared_pkg:
+    in: "internal/pkg/**"
+  composition:
+    in: "internal/proxy"
+  cmd:
+    in: "cmd/**"
+
+commonComponents:
+  - shared_pkg
+
+deps:
+  domain:
+    mayDependOn: [domain]
+  app:
+    mayDependOn: [domain]
+  outbound:
+    mayDependOn: [domain]
+  inbound:
+    mayDependOn: [domain, inbound]
+  composition:
+    mayDependOn: [domain, app, inbound, outbound, context_config, infra_config]
+  cmd:
+    mayDependOn: [composition, domain, context_config, infra_config]
+  context_config: {}
+  infra_config: {}

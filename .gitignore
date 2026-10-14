@@ -1,0 +1,12 @@
+/bin/
+/claudeproxy
+*.test
+*.out
+/internal/pkg/jsonscan/testdata/fuzz/
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+/.claude/
+/.scaffor/

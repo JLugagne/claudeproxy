@@ -1,0 +1,55 @@
+server:
+  listen: 127.0.0.1:8787
+  log_level: info          # debug | info | warn | error
+  log_format: text         # text | json
+  read_header_timeout: 10s
+  idle_timeout: 120s
+  shutdown_timeout: 30s
+
+proxy:
+  max_body_bytes: 67108864 # 64 MiB, Messages API bodies are buffered to read the model
+  # Receives requests without a model (GET /v1/models, telemetry...) and
+  # models no route matches. Leave empty to reject unmatched models.
+  default_provider: anthropic
+
+  # Every provider must expose the Anthropic Messages API (/v1/messages).
+  # auth:
+  #   passthrough  forward the client's credentials untouched (Anthropic only!)
+  #   bearer       Authorization: Bearer <api_key>, client credentials removed
+  #   x-api-key    x-api-key: <api_key>, client credentials removed
+  # api_key, base_url and header values support ${ENV_VAR}.
+  providers:
+    anthropic:
+      base_url: https://api.anthropic.com
+      auth: passthrough
+    openrouter:
+      base_url: https://openrouter.ai/api
+      auth: bearer
+      api_key: ${OPENROUTER_API_KEY}
+      drop_headers: [anthropic-beta]   # if a provider rejects Anthropic betas
+      # Claude Code sends mid-conversation system messages (tool additions,
+      # reasoning effort) that non-Claude models reject: move them to the
+      # request level instead.
+      flatten_mid_conversation_updates: true
+
+  # First match wins. "match" is a glob ('*' spans '/', '?' is one char),
+  # "regex" is RE2. "model" renames the model upstream; $1, $2... refer to
+  # the wildcards / capture groups.
+  routes:
+    # Divert a Claude tier: Claude Code believes it uses Haiku.
+    # - match: "claude-haiku-*"
+    #   provider: openrouter
+    #   model: deepseek/deepseek-v4.1-flash
+
+    - match: "claude-*"
+      provider: anthropic
+
+    # Prefix form: "or:moonshotai/kimi-k3" -> "moonshotai/kimi-k3".
+    # Must precede "*/*", which would match it first.
+    - regex: '^or:(.+)$'
+      provider: openrouter
+      model: "$1"
+
+    # OpenRouter ids such as deepseek/deepseek-v4.1-flash.
+    - match: "*/*"
+      provider: openrouter

@@ -1,0 +1,15 @@
+services:
+  claudeproxy:
+    build: .
+    image: claudeproxy:latest
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${CLAUDEPROXY_PORT:-8787}:8787"
+    environment:
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY in .env or the environment}
+    volumes:
+      - ./configs/config.yaml:/etc/claudeproxy/config.yaml:ro
+    read_only: true
+    cap_drop: [ALL]
+    security_opt:
+      - no-new-privileges:true
