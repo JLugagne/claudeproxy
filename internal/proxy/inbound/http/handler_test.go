@@ -159,3 +159,54 @@ func chunked(r *http.Request) *http.Request {
 	r.ContentLength = -1
 	return r
 }
+
+func TestAttributionDefaultsToUnknown(t *testing.T) {
+	var got domain.Attribution
+	upstreams := map[domain.ProviderName]http.Handler{"anthropic": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = domain.AttributionFrom(r.Context())
+		w.WriteHeader(http.StatusAccepted)
+	})}
+	routes := staticRoutes(t, "claude-opus", domain.Decision{Provider: "anthropic", Model: "claude-opus", Requested: "claude-opus"})
+	handler := inboundhttp.NewHandler(routes, upstreams, 1<<20, slog.New(slog.DiscardHandler))
+
+	serve(handler, httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-opus"}`)))
+
+	if got.Project != "unknown" || got.Session != "unknown" {
+		t.Fatalf("attribution %+v", got)
+	}
+}
+
+func TestAttributionProjectFromHeader(t *testing.T) {
+	var got domain.Attribution
+	upstreams := map[domain.ProviderName]http.Handler{"anthropic": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = domain.AttributionFrom(r.Context())
+		w.WriteHeader(http.StatusAccepted)
+	})}
+	routes := staticRoutes(t, "claude-opus", domain.Decision{Provider: "anthropic", Model: "claude-opus", Requested: "claude-opus"})
+	handler := inboundhttp.NewHandler(routes, upstreams, 1<<20, slog.New(slog.DiscardHandler))
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-opus"}`))
+	req.Header.Set("x-project", "owner/repo")
+	serve(handler, req)
+
+	if got.Project != "owner/repo" || got.Session != "unknown" {
+		t.Fatalf("attribution %+v", got)
+	}
+}
+
+func TestAttributionFromMetadataSession(t *testing.T) {
+	var got domain.Attribution
+	upstreams := map[domain.ProviderName]http.Handler{"anthropic": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		got = domain.AttributionFrom(r.Context())
+		w.WriteHeader(http.StatusAccepted)
+	})}
+	routes := staticRoutes(t, "claude-opus", domain.Decision{Provider: "anthropic", Model: "claude-opus", Requested: "claude-opus"})
+	handler := inboundhttp.NewHandler(routes, upstreams, 1<<20, slog.New(slog.DiscardHandler))
+
+	body := `{"model":"claude-opus","metadata":{"user_id":"{\"device_id\":\"d\",\"session_id\":\"abc\"}"}}`
+	serve(handler, httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(body)))
+
+	if got.Session != "abc" || got.Project != "unknown" {
+		t.Fatalf("attribution %+v", got)
+	}
+}

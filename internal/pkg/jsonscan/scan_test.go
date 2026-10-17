@@ -102,3 +102,22 @@ func FuzzTopLevelString(f *testing.F) {
 		}
 	})
 }
+
+func TestTopLevelObjectLocatesSpan(t *testing.T) {
+	data := []byte(`{"model":"m","metadata":{"user_id":"skipped"},"x":1}`)
+
+	field, err := jsonscan.TopLevelObject(data, "metadata")
+	if err != nil {
+		t.Fatalf("TopLevelObject: %v", err)
+	}
+	if got := string(data[field.Start:field.End]); got != `{"user_id":"skipped"}` {
+		t.Fatalf("span = %s", got)
+	}
+
+	if _, err := jsonscan.TopLevelObject(data, "model"); !errors.Is(err, jsonscan.ErrNotObject) {
+		t.Fatalf("model error = %v, want ErrNotObject", err)
+	}
+	if _, err := jsonscan.TopLevelObject(data, "absent"); !errors.Is(err, jsonscan.ErrNotFound) {
+		t.Fatalf("absent error = %v, want ErrNotFound", err)
+	}
+}

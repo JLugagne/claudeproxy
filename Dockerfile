@@ -12,4 +12,4 @@ COPY configs/config.yaml /etc/claudeproxy/config.yaml
 ENV CLAUDEPROXY_CONFIG=/etc/claudeproxy/config.yaml
 EXPOSE 8787
 ENTRYPOINT ["/claudeproxy"]
-CMD ["serve", "--listen", "0.0.0.0:8787"]
+CMD ["serve", "--listen", "0.0.0.0:8787", "--allow-non-loopback"]

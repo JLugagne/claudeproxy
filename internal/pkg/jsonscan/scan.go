@@ -20,51 +20,11 @@ type Field struct {
 // matches. Nested objects and arrays are skipped without being decoded.
 // It returns ErrNotFound, ErrNotString or ErrMalformed.
 func TopLevelString(data []byte, key string) (Field, error) {
-	i := skipSpace(data, 0)
-	if i >= len(data) || data[i] != '{' {
-		return Field{}, ErrMalformed
+	start, _, err := topLevelValue(data, key)
+	if err != nil {
+		return Field{}, err
 	}
-	i = skipSpace(data, i+1)
-	if i < len(data) && data[i] == '}' {
-		return Field{}, ErrNotFound
-	}
-	for {
-		if i >= len(data) || data[i] != '"' {
-			return Field{}, ErrMalformed
-		}
-		keyEnd, err := skipString(data, i)
-		if err != nil {
-			return Field{}, err
-		}
-		matched := string(data[i+1:keyEnd-1]) == key
-		i = skipSpace(data, keyEnd)
-		if i >= len(data) || data[i] != ':' {
-			return Field{}, ErrMalformed
-		}
-		i = skipSpace(data, i+1)
-		if i >= len(data) {
-			return Field{}, ErrMalformed
-		}
-		if matched {
-			return readString(data, i)
-		}
-		end, err := skipValue(data, i)
-		if err != nil {
-			return Field{}, err
-		}
-		i = skipSpace(data, end)
-		if i >= len(data) {
-			return Field{}, ErrMalformed
-		}
-		switch data[i] {
-		case ',':
-			i = skipSpace(data, i+1)
-		case '}':
-			return Field{}, ErrNotFound
-		default:
-			return Field{}, ErrMalformed
-		}
-	}
+	return readString(data, start)
 }
 
 // Replace returns a new buffer where the field's value is replaced by value
@@ -183,4 +143,63 @@ func skipScalar(data []byte, i int) (int, error) {
 		}
 	}
 	return 0, ErrMalformed
+}
+
+func TopLevelObject(data []byte, key string) (Field, error) {
+	start, end, err := topLevelValue(data, key)
+	if err != nil {
+		return Field{}, err
+	}
+	if data[start] != '{' {
+		return Field{}, ErrNotObject
+	}
+	return Field{Start: start, End: end}, nil
+}
+
+func topLevelValue(data []byte, key string) (int, int, error) {
+	i := skipSpace(data, 0)
+	if i >= len(data) || data[i] != '{' {
+		return 0, 0, ErrMalformed
+	}
+	i = skipSpace(data, i+1)
+	if i < len(data) && data[i] == '}' {
+		return 0, 0, ErrNotFound
+	}
+	for {
+		if i >= len(data) || data[i] != '"' {
+			return 0, 0, ErrMalformed
+		}
+		keyEnd, err := skipString(data, i)
+		if err != nil {
+			return 0, 0, err
+		}
+		matched := string(data[i+1:keyEnd-1]) == key
+		i = skipSpace(data, keyEnd)
+		if i >= len(data) || data[i] != ':' {
+			return 0, 0, ErrMalformed
+		}
+		i = skipSpace(data, i+1)
+		if i >= len(data) {
+			return 0, 0, ErrMalformed
+		}
+		end, err := skipValue(data, i)
+		if err != nil {
+			return 0, 0, err
+		}
+		if matched {
+			return i, end, nil
+		}
+		i = skipSpace(data, end)
+		if i >= len(data) {
+			return 0, 0, ErrMalformed
+		}
+		switch data[i] {
+		case ',':
+			i = skipSpace(data, i+1)
+		case '}':
+			return 0, 0, ErrNotFound
+		default:
+			return 0, 0, ErrMalformed
+		}
+	}
 }

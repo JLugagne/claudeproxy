@@ -16,9 +16,11 @@ import (
 )
 
 var listenOverride string
+var allowNonLoopback bool
 
 func init() {
 	serveCmd.Flags().StringVar(&listenOverride, "listen", "", "listen address, overrides server.listen")
+	serveCmd.Flags().BoolVar(&allowNonLoopback, "allow-non-loopback", false, "bind a non-loopback address; the proxy becomes reachable beyond localhost")
 }
 
 var serveCmd = &cobra.Command{
@@ -32,6 +34,11 @@ var serveCmd = &cobra.Command{
 		}
 		if listenOverride != "" {
 			cfg.Server.Listen = listenOverride
+		}
+		if !allowNonLoopback {
+			if err := cfg.Server.ValidateListen(); err != nil {
+				return err
+			}
 		}
 		logger, err := cfg.Server.NewLogger(os.Stderr)
 		if err != nil {

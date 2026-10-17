@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"net"
 	"time"
 )
 
@@ -58,4 +59,18 @@ func (s Server) NewLogger(w io.Writer) (*slog.Logger, error) {
 	default:
 		return nil, errors.Join(ErrInvalid, fmt.Errorf("log_format %q: want text or json", s.LogFormat))
 	}
+}
+
+func (s Server) ValidateListen() error {
+	host, _, err := net.SplitHostPort(s.Listen)
+	if err != nil {
+		return errors.Join(ErrInvalid, fmt.Errorf("listen %q", s.Listen), err)
+	}
+	if host == "localhost" {
+		return nil
+	}
+	if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() {
+		return nil
+	}
+	return errors.Join(ErrInvalid, fmt.Errorf("listen %q is not a loopback address; pass --allow-non-loopback to bind it anyway", s.Listen))
 }

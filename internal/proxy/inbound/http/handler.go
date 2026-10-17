@@ -5,6 +5,7 @@ package http
 
 import (
 	"bytes"
+	"encoding/json"
 	"errors"
 	"io"
 	"log/slog"
@@ -57,6 +58,7 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		field, _ = jsonscan.TopLevelString(body, "model")
 	}
 
+	r = r.WithContext(domain.WithAttribution(r.Context(), resolveAttribution(r, body)))
 	decision, err := h.routes.ResolveRoute(r.Context(), domain.Model(field.Value))
 	if err != nil {
 		h.logger.LogAttrs(r.Context(), slog.LevelWarn, "no route", slog.String("model", field.Value), slog.String("path", r.URL.Path))
@@ -119,13 +121,46 @@ func setBody(r *http.Request, body []byte) {
 }
 
 func (h *Handler) logRequest(r *http.Request, decision domain.Decision, recorder *statusRecorder, start time.Time) {
+	attribution := domain.AttributionFrom(r.Context())
 	h.logger.LogAttrs(r.Context(), slog.LevelInfo, "proxied",
 		slog.String("method", r.Method),
 		slog.String("path", r.URL.Path),
 		slog.String("model", string(decision.Requested)),
 		slog.String("provider", string(decision.Provider)),
 		slog.String("upstream_model", string(decision.Model)),
+		slog.String("project", attribution.Project),
+		slog.String("session", attribution.Session),
 		slog.Int("status", recorder.status),
 		slog.Duration("duration", time.Since(start)),
 	)
+}
+
+// resolveAttribution reads the client project header and the Claude Code session
+// id carried by the request body, then normalizes empty values to Unknown.
+func resolveAttribution(r *http.Request, body []byte) domain.Attribution {
+	return domain.Attribution{
+		Project: r.Header.Get("x-project"),
+		Session: sessionFromBody(body),
+	}.Normalized()
+}
+
+func sessionFromBody(body []byte) string {
+	if body == nil {
+		return ""
+	}
+	metadata, err := jsonscan.TopLevelObject(body, "metadata")
+	if err != nil {
+		return ""
+	}
+	userID, err := jsonscan.TopLevelString(body[metadata.Start:metadata.End], "user_id")
+	if err != nil {
+		return ""
+	}
+	var identity struct {
+		SessionID string `json:"session_id"`
+	}
+	if err := json.Unmarshal([]byte(userID.Value), &identity); err != nil {
+		return ""
+	}
+	return identity.SessionID
 }
