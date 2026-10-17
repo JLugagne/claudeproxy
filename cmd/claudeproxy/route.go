@@ -8,6 +8,7 @@ import (
 	"github.com/spf13/cobra"
 
 	"github.com/JLugagne/claudeproxy/internal/proxy"
+	proxyconfig "github.com/JLugagne/claudeproxy/internal/proxy/config"
 	"github.com/JLugagne/claudeproxy/internal/proxy/domain"
 )
 
@@ -20,7 +21,7 @@ var routeCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		p, err := proxy.New(cfg.Proxy, slog.New(slog.DiscardHandler))
+		p, err := proxy.New(cfg.Proxy, proxyconfig.Metrics{Disabled: true}, slog.New(slog.DiscardHandler))
 		if err != nil {
 			return err
 		}

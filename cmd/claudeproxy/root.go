@@ -20,7 +20,7 @@ var rootCmd = &cobra.Command{
 
 func init() {
 	rootCmd.PersistentFlags().StringVarP(&configPath, "config", "c", defaultConfigPath(), "configuration file (env CLAUDEPROXY_CONFIG)")
-	rootCmd.AddCommand(serveCmd, routeCmd)
+	rootCmd.AddCommand(serveCmd, routeCmd, setupCmd)
 }
 
 // Execute runs the command tree and exits 1 on error.

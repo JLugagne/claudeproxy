@@ -12,8 +12,9 @@ import (
 )
 
 type fileConfig struct {
-	Server config.Server      `yaml:"server"`
-	Proxy  proxyconfig.Config `yaml:"proxy"`
+	Server  config.Server       `yaml:"server"`
+	Proxy   proxyconfig.Config  `yaml:"proxy"`
+	Metrics proxyconfig.Metrics `yaml:"metrics"`
 }
 
 func loadConfig(path string) (fileConfig, error) {

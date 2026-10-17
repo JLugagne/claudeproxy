@@ -458,3 +458,119 @@ func jsonEqual(t *testing.T, a, b string) bool {
 	}
 	return reflect.DeepEqual(decode(a), decode(b))
 }
+
+func TestNonPassthroughStripsClaudeIdentity(t *testing.T) {
+	server, requests := newCapturingServer(t)
+	proxy := newProxy(t, upstream.Config{Name: "openrouter", BaseURL: mustURL(t, server.URL), Auth: upstream.AuthBearer, APIKey: "sk-or"})
+
+	req := newClientRequest(t, proxy.URL)
+	req.Header.Set("X-Project", "owner/repo")
+	req.Header.Set("X-App", "cli")
+	req.Header.Set("X-Stainless-Lang", "js")
+	req.Header.Set("X-Anthropic-Something", "x")
+	do(t, req)
+
+	got := <-requests
+	for _, name := range []string{"X-Project", "X-App", "X-Stainless-Lang", "X-Anthropic-Something", "Anthropic-Beta", "X-Api-Key"} {
+		if got.header.Get(name) != "" {
+			t.Errorf("header %s leaked: %q", name, got.header.Get(name))
+		}
+	}
+	if ua := got.header.Get("User-Agent"); strings.Contains(ua, "claude") {
+		t.Errorf("claude user-agent leaked: %q", ua)
+	}
+	if got.header.Get("Anthropic-Version") != "2023-06-01" {
+		t.Errorf("protocol header dropped: %q", got.header.Get("Anthropic-Version"))
+	}
+}
+
+func TestProxyMetaHeaderNeverReachesUpstream(t *testing.T) {
+	server, requests := newCapturingServer(t)
+	proxy := newProxy(t, upstream.Config{Name: "anthropic", BaseURL: mustURL(t, server.URL), Auth: upstream.AuthPassthrough})
+
+	req := newClientRequest(t, proxy.URL)
+	req.Header.Set("X-Project", "owner/repo")
+	do(t, req)
+
+	if got := (<-requests).header.Get("X-Project"); got != "" {
+		t.Fatalf("X-Project leaked to upstream: %q", got)
+	}
+}
+
+func TestNonPassthroughStripsClaudeMetadata(t *testing.T) {
+	tests := map[string]struct{ body, want string }{
+		"metadata is removed": {
+			body: `{"model":"m","metadata":{"user_id":"u"},"messages":[]}`,
+			want: `{"model":"m","messages":[]}`,
+		},
+		"attribution block is removed": {
+			body: `{"model":"m","system":[{"type":"text","text":"x-anthropic-billing-header: cc_version=1"},{"type":"text","text":"real"}],"messages":[]}`,
+			want: `{"model":"m","system":[{"type":"text","text":"real"}],"messages":[]}`,
+		},
+		"system emptied is dropped": {
+			body: `{"model":"m","system":[{"type":"text","text":"x-anthropic-billing-header: cc_version=1"}],"messages":[]}`,
+			want: `{"model":"m","messages":[]}`,
+		},
+		"plain string system is untouched": {
+			body: `{"model":"m","system":"x-anthropic-billing-header: nope","messages":[]}`,
+			want: `{"model":"m","system":"x-anthropic-billing-header: nope","messages":[]}`,
+		},
+		"nothing to strip is byte identical": {
+			body: `{"model":"m","messages":[]}`,
+			want: `{"model":"m","messages":[]}`,
+		},
+	}
+	for name, tt := range tests {
+		t.Run(name, func(t *testing.T) {
+			server, requests := newCapturingServer(t)
+			proxy := newProxy(t, upstream.Config{Name: "openrouter", BaseURL: mustURL(t, server.URL), Auth: upstream.AuthBearer, APIKey: "sk-or"})
+			req, err := http.NewRequest(http.MethodPost, proxy.URL+"/v1/messages", strings.NewReader(tt.body))
+			if err != nil {
+				t.Fatal(err)
+			}
+			do(t, req)
+			got := (<-requests).body
+			if tt.body == tt.want {
+				if got != tt.want {
+					t.Fatalf("body changed unexpectedly\n got %s\nwant %s", got, tt.want)
+				}
+				return
+			}
+			if !jsonEqual(t, got, tt.want) {
+				t.Fatalf("upstream body\n got %s\nwant %s", got, tt.want)
+			}
+		})
+	}
+}
+
+func TestPassthroughKeepsClaudeMetadata(t *testing.T) {
+	server, requests := newCapturingServer(t)
+	proxy := newProxy(t, upstream.Config{Name: "anthropic", BaseURL: mustURL(t, server.URL), Auth: upstream.AuthPassthrough})
+
+	body := `{"model":"m","metadata":{"user_id":"u"},"messages":[]}`
+	req, err := http.NewRequest(http.MethodPost, proxy.URL+"/v1/messages", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	do(t, req)
+
+	if got := (<-requests).body; got != body {
+		t.Fatalf("passthrough body was modified\n got %s\nwant %s", got, body)
+	}
+}
+
+func TestKeepClaudeMetadataOptsOut(t *testing.T) {
+	server, requests := newCapturingServer(t)
+	proxy := newProxy(t, upstream.Config{Name: "openrouter", BaseURL: mustURL(t, server.URL), Auth: upstream.AuthBearer, APIKey: "sk-or", KeepClaudeMetadata: true})
+
+	body := `{"model":"m","metadata":{"user_id":"u"},"messages":[]}`
+	req, err := http.NewRequest(http.MethodPost, proxy.URL+"/v1/messages", strings.NewReader(body))
+	if err != nil {
+		t.Fatal(err)
+	}
+	do(t, req)
+
+	if got := (<-requests).body; got != body {
+		t.Fatalf("opt-out body was modified\n got %s\nwant %s", got, body)
+	}
+}

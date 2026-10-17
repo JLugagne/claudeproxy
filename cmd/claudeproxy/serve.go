@@ -44,7 +44,7 @@ var serveCmd = &cobra.Command{
 		if err != nil {
 			return err
 		}
-		p, err := proxy.New(cfg.Proxy, logger)
+		p, err := proxy.New(cfg.Proxy, cfg.Metrics, logger)
 		if err != nil {
 			return err
 		}

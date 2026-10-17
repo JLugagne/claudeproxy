@@ -7,6 +7,7 @@ import (
 	"testing"
 
 	"github.com/JLugagne/claudeproxy/internal/proxy"
+	proxyconfig "github.com/JLugagne/claudeproxy/internal/proxy/config"
 	"github.com/JLugagne/claudeproxy/internal/proxy/domain"
 )
 
@@ -17,7 +18,7 @@ func TestShippedConfigIsValid(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	p, err := proxy.New(cfg.Proxy, slog.New(slog.DiscardHandler))
+	p, err := proxy.New(cfg.Proxy, proxyconfig.Metrics{Disabled: true}, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}

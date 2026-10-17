@@ -64,7 +64,19 @@ then from `~/.config/claudeproxy/config.yaml`.
 
 ### 2. Point Claude Code at the proxy
 
-Add the base URL to `~/.claude/settings.json` so every session uses it:
+Point Claude Code at the proxy. `setup` does it for you:
+
+```sh
+go run . setup                 # or: docker compose exec claudeproxy /claudeproxy setup
+```
+
+`setup` writes `ANTHROPIC_BASE_URL` into `~/.claude/settings.json` (derived from
+`server.listen`) and installs a `SessionStart` hook that exports the `X-Project`
+header (`git` `owner/repo`, else the project path) so usage metrics are
+attributed per project. It is idempotent and preserves your other settings;
+`--claude-dir` and `--base-url` override the defaults.
+
+Or do it by hand — add the base URL to `~/.claude/settings.json` so every session uses it:
 
 ```json
 {

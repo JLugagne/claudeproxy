@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 )
@@ -41,6 +42,8 @@ type Provider struct {
 	// effort that Claude Code sends in mid-conversation system messages to
 	// the request level, for models that reject such updates.
 	FlattenMidConversationUpdates bool `yaml:"flatten_mid_conversation_updates"`
+	// KeepClaudeMetadata keeps the metadata object and the billing attribution block in requests sent to a provider other than Anthropic. Leave it false so no Claude identifier leaks to a third party.
+	KeepClaudeMetadata bool `yaml:"keep_claude_metadata"`
 }
 
 // Route matches the requested model with either Match (glob, '*' and '?') or
@@ -85,4 +88,24 @@ func (c Config) Resolve() (Config, error) {
 		return Config{}, errors.Join(ErrUnsetEnv, fmt.Errorf("missing: %s", strings.Join(missing, ", ")))
 	}
 	return c, nil
+}
+
+// Metrics configures request-usage recording. Recording is enabled by default;
+// Disabled opts out.
+type Metrics struct {
+	Disabled bool   `yaml:"disabled"`
+	Path     string `yaml:"path"`
+}
+
+func (m Metrics) Enabled() bool { return !m.Disabled }
+
+func (m Metrics) ResolvePath() (string, error) {
+	if m.Path != "" {
+		return m.Path, nil
+	}
+	dir, err := os.UserConfigDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, "claudeproxy", "usage.db"), nil
 }

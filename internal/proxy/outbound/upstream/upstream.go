@@ -15,6 +15,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
+	"strings"
 	"time"
 
 	"github.com/JLugagne/claudeproxy/internal/pkg/apierror"
@@ -46,6 +47,24 @@ var ErrInvalidConfig = errors.New("invalid upstream configuration")
 
 var clientCredentialHeaders = []string{"Authorization", "X-Api-Key", "Cookie"}
 
+// proxyMetaHeaders are set by claudeproxy for its own observability. They are
+// stripped from every outbound request, Anthropic included, and never reach a
+// provider.
+var proxyMetaHeaders = []string{"X-Project"}
+
+// claudeIdentityHeaders and claudeIdentityHeaderPrefixes identify the client as
+// Claude Code. They carry no protocol meaning, so they are stripped before a
+// provider that is not Anthropic (which holds the client's own credentials) can
+// see them.
+var claudeIdentityHeaders = []string{
+	"User-Agent",
+	"X-App",
+	"Anthropic-Beta",
+	"Anthropic-Dangerous-Direct-Browser-Access",
+}
+
+var claudeIdentityHeaderPrefixes = []string{"X-Stainless-", "X-Anthropic-"}
+
 // Config describes one provider.
 type Config struct {
 	Name string
@@ -64,6 +83,8 @@ type Config struct {
 	// top-level tools array, and a message-level output_config replaces the
 	// request-level one. Requests without such updates are forwarded untouched.
 	FlattenMidConversationUpdates bool
+	// KeepClaudeMetadata disables the stripping of Claude Code's metadata object and billing attribution block. They are stripped by default for every provider other than Anthropic.
+	KeepClaudeMetadata bool
 }
 
 // NewTransport returns the transport shared by every provider. Compression is
@@ -98,10 +119,14 @@ func New(cfg Config, transport http.RoundTripper, logger *slog.Logger) (http.Han
 		ErrorLog:       slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 		ErrorHandler:   errorHandler(cfg.Name, logger),
 	}
-	if !cfg.FlattenMidConversationUpdates {
-		return proxy, nil
+	handler := http.Handler(proxy)
+	if cfg.Auth != AuthPassthrough && !cfg.KeepClaudeMetadata {
+		handler = claudeMetadataStripper(handler)
 	}
-	return midConversationFlattener(proxy), nil
+	if cfg.FlattenMidConversationUpdates {
+		handler = midConversationFlattener(handler)
+	}
+	return handler, nil
 }
 
 func validate(cfg Config) error {
@@ -128,6 +153,15 @@ func rewriter(cfg Config) func(*httputil.ProxyRequest) {
 	return func(pr *httputil.ProxyRequest) {
 		pr.SetURL(&base)
 		header := pr.Out.Header
+		for _, name := range proxyMetaHeaders {
+			header.Del(name)
+		}
+		if cfg.Auth != AuthPassthrough {
+			for _, name := range claudeIdentityHeaders {
+				header.Del(name)
+			}
+			deleteHeaderPrefixes(header, claudeIdentityHeaderPrefixes)
+		}
 		for _, name := range cfg.DropHeaders {
 			header.Del(name)
 		}
@@ -213,4 +247,15 @@ func decodeForLog(head []byte, encoding string) string {
 
 func undecodable(head []byte, encoding string) string {
 	return fmt.Sprintf("<%d bytes, content-encoding %q not decoded>", len(head), encoding)
+}
+
+func deleteHeaderPrefixes(header http.Header, prefixes []string) {
+	for name := range header {
+		for _, prefix := range prefixes {
+			if strings.HasPrefix(name, prefix) {
+				header.Del(name)
+				break
+			}
+		}
+	}
 }

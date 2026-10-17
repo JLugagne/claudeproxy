@@ -14,8 +14,10 @@ import (
 	"github.com/JLugagne/claudeproxy/internal/proxy/config"
 	"github.com/JLugagne/claudeproxy/internal/proxy/domain"
 	"github.com/JLugagne/claudeproxy/internal/proxy/domain/usecases/routeuc"
+	"github.com/JLugagne/claudeproxy/internal/proxy/domain/usecases/usageuc"
 	inboundhttp "github.com/JLugagne/claudeproxy/internal/proxy/inbound/http"
 	"github.com/JLugagne/claudeproxy/internal/proxy/outbound/upstream"
+	"github.com/JLugagne/claudeproxy/internal/proxy/outbound/usage"
 )
 
 // ErrInvalidConfig is returned by New when the proxy section is inconsistent.
@@ -26,11 +28,13 @@ type Proxy struct {
 	Handler   http.Handler
 	Routes    routeuc.RouteQueries
 	transport *http.Transport
+	// usage is the metrics store, nil when metrics are disabled.
+	usage *usage.Store
 }
 
 // New wires the proxy from a resolved configuration (see config.Config.Resolve).
 // It returns ErrInvalidConfig, wrapping the offending route or provider error.
-func New(cfg config.Config, logger *slog.Logger) (*Proxy, error) {
+func New(cfg config.Config, metrics config.Metrics, logger *slog.Logger) (*Proxy, error) {
 	routes, err := buildRoutes(cfg.Routes)
 	if err != nil {
 		return nil, errors.Join(ErrInvalidConfig, err)
@@ -52,17 +56,39 @@ func New(cfg config.Config, logger *slog.Logger) (*Proxy, error) {
 		upstreams[domain.ProviderName(name)] = handler
 	}
 
+	recorder := usageuc.Recorder(usageuc.Nop{})
+	var store *usage.Store
+	if metrics.Enabled() {
+		path, err := metrics.ResolvePath()
+		switch {
+		case err != nil:
+			logger.Warn("usage metrics disabled: cannot resolve database path", "error", err)
+		default:
+			if store, err = usage.Open(path, logger); err != nil {
+				logger.Warn("usage metrics disabled: cannot open database", "path", path, "error", err)
+				store = nil
+			} else {
+				recorder = store
+				logger.Info("usage metrics enabled", "path", path)
+			}
+		}
+	}
+
 	application := app.New(router)
 	return &Proxy{
-		Handler:   inboundhttp.NewHandler(application, upstreams, cfg.MaxBodyBytes, logger),
+		Handler:   inboundhttp.NewHandler(application, upstreams, cfg.MaxBodyBytes, logger, inboundhttp.WithUsage(recorder)),
 		Routes:    application,
 		transport: transport,
+		usage:     store,
 	}, nil
 }
 
 // Close releases idle upstream connections; in-flight requests are unaffected.
 func (p *Proxy) Close() {
 	p.transport.CloseIdleConnections()
+	if p.usage != nil {
+		_ = p.usage.Close()
+	}
 }
 
 func buildRoutes(defs []config.Route) ([]domain.Route, error) {
@@ -101,5 +127,6 @@ func buildUpstream(name string, p config.Provider, transport http.RoundTripper, 
 		SetHeaders:                    p.Headers,
 		DropHeaders:                   p.DropHeaders,
 		FlattenMidConversationUpdates: p.FlattenMidConversationUpdates,
+		KeepClaudeMetadata:            p.KeepClaudeMetadata,
 	}, transport, logger)
 }

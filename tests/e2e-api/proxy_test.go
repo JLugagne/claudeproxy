@@ -44,7 +44,7 @@ func startProxy(t *testing.T, anthropicURL, openrouterURL string) *httptest.Serv
 			{Match: "*/*", Provider: "openrouter"},
 			{Match: "claude-*", Provider: "anthropic"},
 		},
-	}, slog.New(slog.DiscardHandler))
+	}, config.Metrics{Disabled: true}, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}

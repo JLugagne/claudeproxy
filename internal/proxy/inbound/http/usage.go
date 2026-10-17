@@ -1,0 +1,147 @@
+package http
+
+import (
+	"bytes"
+	"encoding/json"
+	"net/http"
+	"strings"
+)
+
+// anthropicUsage mirrors the usage object of the Messages API.
+type anthropicUsage struct {
+	InputTokens              int64 `json:"input_tokens"`
+	OutputTokens             int64 `json:"output_tokens"`
+	CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
+	CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+}
+
+// maxBufferedBodyBytes bounds what the parser keeps in memory.
+const maxBufferedBodyBytes = 1 << 20
+
+// usageRecorder wraps a statusRecorder, teeing the response body into a parser
+// so the request's usage can be reported once it completes. It delegates Unwrap
+// so the reverse proxy still sees the underlying Flusher.
+type usageRecorder struct {
+	*statusRecorder
+	parser *usageParser
+}
+
+func newUsageRecorder(w http.ResponseWriter) *usageRecorder {
+	return &usageRecorder{statusRecorder: &statusRecorder{ResponseWriter: w, status: http.StatusOK}}
+}
+
+func (u *usageRecorder) WriteHeader(status int) {
+	u.statusRecorder.WriteHeader(status)
+	u.ensureParser()
+}
+
+func (u *usageRecorder) Write(p []byte) (int, error) {
+	u.ensureParser()
+	u.parser.Write(p)
+	return u.statusRecorder.Write(p)
+}
+
+func (u *usageRecorder) ensureParser() {
+	if u.parser == nil {
+		u.parser = newUsageParser(strings.Contains(u.Header().Get("Content-Type"), "text/event-stream"))
+	}
+}
+
+func (u *usageRecorder) parsed() anthropicUsage {
+	if u.parser == nil {
+		return anthropicUsage{}
+	}
+	return u.parser.usage()
+}
+
+func (u *usageRecorder) streaming() bool {
+	return u.parser != nil && u.parser.stream
+}
+
+// usageParser extracts the Anthropic usage counters from a response body, in
+// either the single-JSON form or the SSE stream form.
+type usageParser struct {
+	stream bool
+	buf    []byte
+	totals anthropicUsage
+}
+
+func newUsageParser(stream bool) *usageParser {
+	return &usageParser{stream: stream}
+}
+
+func (p *usageParser) Write(chunk []byte) {
+	if p.stream {
+		p.writeStream(chunk)
+		return
+	}
+	if len(p.buf) < maxBufferedBodyBytes {
+		p.buf = append(p.buf, chunk...)
+	}
+}
+
+func (p *usageParser) usage() anthropicUsage {
+	if p.stream {
+		return p.totals
+	}
+	var body struct {
+		Usage *anthropicUsage `json:"usage"`
+	}
+	if json.Unmarshal(p.buf, &body) == nil && body.Usage != nil {
+		return *body.Usage
+	}
+	return anthropicUsage{}
+}
+
+func (p *usageParser) writeStream(chunk []byte) {
+	p.buf = append(p.buf, chunk...)
+	for {
+		i := bytes.IndexByte(p.buf, '\n')
+		if i < 0 {
+			break
+		}
+		line := p.buf[:i]
+		p.buf = p.buf[i+1:]
+		p.mergeEvent(line)
+	}
+	if len(p.buf) > maxBufferedBodyBytes {
+		p.buf = p.buf[:0]
+	}
+}
+
+func (p *usageParser) mergeEvent(line []byte) {
+	data, ok := bytes.CutPrefix(line, []byte("data:"))
+	if !ok {
+		return
+	}
+	var event struct {
+		Usage   *anthropicUsage `json:"usage"`
+		Message *struct {
+			Usage *anthropicUsage `json:"usage"`
+		} `json:"message"`
+	}
+	if json.Unmarshal(bytes.TrimSpace(data), &event) != nil {
+		return
+	}
+	if event.Message != nil && event.Message.Usage != nil {
+		p.merge(*event.Message.Usage)
+	}
+	if event.Usage != nil {
+		p.merge(*event.Usage)
+	}
+}
+
+func (p *usageParser) merge(u anthropicUsage) {
+	if u.InputTokens != 0 {
+		p.totals.InputTokens = u.InputTokens
+	}
+	if u.OutputTokens != 0 {
+		p.totals.OutputTokens = u.OutputTokens
+	}
+	if u.CacheReadInputTokens != 0 {
+		p.totals.CacheReadInputTokens = u.CacheReadInputTokens
+	}
+	if u.CacheCreationInputTokens != 0 {
+		p.totals.CacheCreationInputTokens = u.CacheCreationInputTokens
+	}
+}

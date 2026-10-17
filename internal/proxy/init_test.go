@@ -25,7 +25,7 @@ func TestNewAcceptsValidConfig(t *testing.T) {
 			{Match: "claude-*", Provider: "anthropic"},
 			{Regex: "^or/(.+)$", Provider: "openrouter", Model: "$1"},
 		},
-	}, slog.New(slog.DiscardHandler))
+	}, config.Metrics{Disabled: true}, slog.New(slog.DiscardHandler))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +45,7 @@ func TestNewRejectsInvalidConfig(t *testing.T) {
 	}
 	for name, cfg := range tests {
 		t.Run(name, func(t *testing.T) {
-			if _, err := proxy.New(cfg, slog.New(slog.DiscardHandler)); !errors.Is(err, proxy.ErrInvalidConfig) {
+			if _, err := proxy.New(cfg, config.Metrics{Disabled: true}, slog.New(slog.DiscardHandler)); !errors.Is(err, proxy.ErrInvalidConfig) {
 				t.Fatalf("error = %v, want ErrInvalidConfig", err)
 			}
 		})

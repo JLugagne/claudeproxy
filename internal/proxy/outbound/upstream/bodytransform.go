@@ -12,6 +12,9 @@ import (
 
 const messagesPathPrefix = "/v1/messages"
 
+// attributionPrefix opens the system block Claude Code prepends for billing.
+const attributionPrefix = "x-anthropic-billing-header:"
+
 var (
 	toolAdditionMarker = []byte(`"tool_addition"`)
 	outputConfigMarker = []byte(`"output_config"`)
@@ -27,27 +30,7 @@ type toolAddition struct {
 }
 
 func midConversationFlattener(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		if r.Method != http.MethodPost || !strings.HasPrefix(r.URL.Path, messagesPathPrefix) || r.Header.Get("Content-Encoding") != "" || r.Body == nil {
-			next.ServeHTTP(w, r)
-			return
-		}
-		body, err := io.ReadAll(r.Body)
-		if err != nil {
-			apierror.Write(w, http.StatusBadRequest, apierror.TypeInvalidRequest, "claudeproxy: cannot read request body")
-			return
-		}
-		if inlined, ok := flattenMidConversationUpdates(body); ok {
-			body = inlined
-		}
-		r.Body = io.NopCloser(bytes.NewReader(body))
-		r.ContentLength = int64(len(body))
-		r.TransferEncoding = nil
-		r.GetBody = func() (io.ReadCloser, error) {
-			return io.NopCloser(bytes.NewReader(body)), nil
-		}
-		next.ServeHTTP(w, r)
-	})
+	return transformRequestBody(next, flattenMidConversationUpdates)
 }
 
 func flattenMidConversationUpdates(body []byte) ([]byte, bool) {
@@ -165,4 +148,92 @@ func indexTool(tools []json.RawMessage, name string) int {
 		}
 	}
 	return -1
+}
+
+func transformRequestBody(next http.Handler, transform func([]byte) ([]byte, bool)) http.Handler {
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method != http.MethodPost || !strings.HasPrefix(r.URL.Path, messagesPathPrefix) || r.Header.Get("Content-Encoding") != "" || r.Body == nil {
+			next.ServeHTTP(w, r)
+			return
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			apierror.Write(w, http.StatusBadRequest, apierror.TypeInvalidRequest, "claudeproxy: cannot read request body")
+			return
+		}
+		if transformed, ok := transform(body); ok {
+			body = transformed
+		}
+		r.Body = io.NopCloser(bytes.NewReader(body))
+		r.ContentLength = int64(len(body))
+		r.TransferEncoding = nil
+		r.GetBody = func() (io.ReadCloser, error) {
+			return io.NopCloser(bytes.NewReader(body)), nil
+		}
+		next.ServeHTTP(w, r)
+	})
+}
+
+func claudeMetadataStripper(next http.Handler) http.Handler {
+	return transformRequestBody(next, stripClaudeMetadata)
+}
+
+func stripClaudeMetadata(body []byte) ([]byte, bool) {
+	var req map[string]json.RawMessage
+	if err := json.Unmarshal(body, &req); err != nil {
+		return nil, false
+	}
+	changed := false
+	if _, ok := req["metadata"]; ok {
+		delete(req, "metadata")
+		changed = true
+	}
+	if raw, ok := req["system"]; ok {
+		if kept, systemChanged := stripAttributionBlocks(raw); systemChanged {
+			if kept == nil {
+				delete(req, "system")
+			} else {
+				req["system"] = kept
+			}
+			changed = true
+		}
+	}
+	if !changed {
+		return nil, false
+	}
+	out, err := json.Marshal(req)
+	if err != nil {
+		return nil, false
+	}
+	return out, true
+}
+
+func stripAttributionBlocks(raw json.RawMessage) (json.RawMessage, bool) {
+	var blocks []json.RawMessage
+	if err := json.Unmarshal(raw, &blocks); err != nil {
+		return raw, false
+	}
+	kept := make([]json.RawMessage, 0, len(blocks))
+	removed := false
+	for _, block := range blocks {
+		var text struct {
+			Text string `json:"text"`
+		}
+		if json.Unmarshal(block, &text) == nil && strings.HasPrefix(text.Text, attributionPrefix) {
+			removed = true
+			continue
+		}
+		kept = append(kept, block)
+	}
+	if !removed {
+		return raw, false
+	}
+	if len(kept) == 0 {
+		return nil, true
+	}
+	out, err := json.Marshal(kept)
+	if err != nil {
+		return raw, false
+	}
+	return out, true
 }

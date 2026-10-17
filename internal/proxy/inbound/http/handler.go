@@ -17,6 +17,7 @@ import (
 	"github.com/JLugagne/claudeproxy/internal/pkg/jsonscan"
 	"github.com/JLugagne/claudeproxy/internal/proxy/domain"
 	"github.com/JLugagne/claudeproxy/internal/proxy/domain/usecases/routeuc"
+	"github.com/JLugagne/claudeproxy/internal/proxy/domain/usecases/usageuc"
 )
 
 // HealthPath is answered by the proxy itself and never forwarded.
@@ -32,13 +33,27 @@ type Handler struct {
 	upstreams    map[domain.ProviderName]http.Handler
 	maxBodyBytes int64
 	logger       *slog.Logger
+	// usage records each request's consumption; it defaults to usageuc.Nop.
+	usage usageuc.Recorder
+}
+
+// Option customizes the Handler.
+type Option func(*Handler)
+
+// WithUsage records the usage of every request the handler serves.
+func WithUsage(recorder usageuc.Recorder) Option {
+	return func(h *Handler) { h.usage = recorder }
 }
 
 // NewHandler wires the transport. upstreams must contain every provider the
 // routes can return. maxBodyBytes bounds the buffered request body; larger
 // requests are rejected with 413.
-func NewHandler(routes routeuc.RouteQueries, upstreams map[domain.ProviderName]http.Handler, maxBodyBytes int64, logger *slog.Logger) *Handler {
-	return &Handler{routes: routes, upstreams: upstreams, maxBodyBytes: maxBodyBytes, logger: logger}
+func NewHandler(routes routeuc.RouteQueries, upstreams map[domain.ProviderName]http.Handler, maxBodyBytes int64, logger *slog.Logger, opts ...Option) *Handler {
+	h := &Handler{routes: routes, upstreams: upstreams, maxBodyBytes: maxBodyBytes, logger: logger, usage: usageuc.Nop{}}
+	for _, opt := range opts {
+		opt(h)
+	}
+	return h
 }
 
 func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -77,8 +92,9 @@ func (h *Handler) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		setBody(r, body)
 	}
 
-	recorder := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
-	defer h.logRequest(r, decision, recorder, time.Now())
+	recorder := newUsageRecorder(w)
+	start := time.Now()
+	defer h.finish(r, decision, recorder, start)
 	upstream.ServeHTTP(recorder, r)
 }
 
@@ -163,4 +179,23 @@ func sessionFromBody(body []byte) string {
 		return ""
 	}
 	return identity.SessionID
+}
+
+func (h *Handler) finish(r *http.Request, decision domain.Decision, recorder *usageRecorder, start time.Time) {
+	h.logRequest(r, decision, recorder.statusRecorder, start)
+	parsed := recorder.parsed()
+	h.usage.Record(domain.Usage{
+		Time:                     start,
+		Attribution:              domain.AttributionFrom(r.Context()),
+		Provider:                 decision.Provider,
+		RequestedModel:           decision.Requested,
+		UpstreamModel:            decision.Model,
+		InputTokens:              parsed.InputTokens,
+		OutputTokens:             parsed.OutputTokens,
+		CacheReadInputTokens:     parsed.CacheReadInputTokens,
+		CacheCreationInputTokens: parsed.CacheCreationInputTokens,
+		Status:                   recorder.status,
+		Duration:                 time.Since(start),
+		Stream:                   recorder.streaming(),
+	})
 }

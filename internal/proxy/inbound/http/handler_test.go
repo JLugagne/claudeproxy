@@ -11,6 +11,7 @@ import (
 
 	"github.com/JLugagne/claudeproxy/internal/proxy/domain"
 	"github.com/JLugagne/claudeproxy/internal/proxy/domain/usecases/routeuc/routeuctest"
+	"github.com/JLugagne/claudeproxy/internal/proxy/domain/usecases/usageuc/usageuctest"
 	inboundhttp "github.com/JLugagne/claudeproxy/internal/proxy/inbound/http"
 )
 
@@ -208,5 +209,29 @@ func TestAttributionFromMetadataSession(t *testing.T) {
 
 	if got.Session != "abc" || got.Project != "unknown" {
 		t.Fatalf("attribution %+v", got)
+	}
+}
+
+func TestHandlerRecordsUsage(t *testing.T) {
+	upstreams := map[domain.ProviderName]http.Handler{"anthropic": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"usage":{"input_tokens":11,"output_tokens":22}}`)
+	})}
+	routes := staticRoutes(t, "claude-opus", domain.Decision{Provider: "anthropic", Model: "claude-opus", Requested: "claude-opus"})
+	recorder := &usageuctest.MockRecorder{}
+	handler := inboundhttp.NewHandler(routes, upstreams, 1<<20, slog.New(slog.DiscardHandler), inboundhttp.WithUsage(recorder))
+
+	req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-opus"}`))
+	req.Header.Set("x-project", "owner/repo")
+	serve(handler, req)
+
+	got := recorder.Recorded()
+	if len(got) != 1 {
+		t.Fatalf("recorded %d usages, want 1", len(got))
+	}
+	usage := got[0]
+	if usage.Project != "owner/repo" || usage.Session != "unknown" || usage.Provider != "anthropic" || usage.InputTokens != 11 || usage.OutputTokens != 22 || usage.Status != http.StatusOK {
+		t.Fatalf("usage %+v", usage)
 	}
 }
