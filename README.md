@@ -156,6 +156,52 @@ See [configs/config.yaml](configs/config.yaml).
 
 Unknown keys in the file are rejected at startup.
 
+## Dashboard
+
+The proxy serves a usage console at
+[http://127.0.0.1:8787/dashboard](http://127.0.0.1:8787/dashboard). It is a
+React app embedded in the binary: Overview, Projects, Models, Requests,
+Sessions and Providers, with a dark and a light theme.
+
+The source lives in [web/](web/) and is built by Vite straight into the Go
+embed directory, `internal/proxy/inbound/dashboard/dist`. `make run` and
+`make build` rebuild it first, so the UI embedded in the binary always matches
+`web/` — there is no separate step. The Dockerfile does the same in a single
+file: a Node stage builds the console, then the Go builder embeds it. `dist/`
+is also committed, so a bare `go build` and `make test` work without Node.
+
+`/dashboard` is served by the composition root and never forwarded upstream;
+every other path reaches the proxy untouched.
+
+The console reads the **usage SQLite database** (metrics are on by default; see
+`metrics` in [configs/config.yaml](configs/config.yaml)). It exposes read-only
+JSON under `/dashboard/api/`:
+
+| endpoint | returns |
+|---|---|
+| `GET /dashboard/api/overview?range=24h` | totals, token volume, top projects and models, recent requests |
+| `GET /dashboard/api/projects` | per-project aggregates and a request series |
+| `GET /dashboard/api/models` | per-model aggregates |
+| `GET /dashboard/api/requests` | the request log (`q`, `status`, `stream`, `limit`) |
+| `GET /dashboard/api/sessions` | per-session aggregates |
+| `GET /dashboard/api/providers` | provider usage merged with the configured routes |
+
+`range` is `24h` (default), `7d` or `30d`; the chart buckets are hourly for
+24h and daily otherwise.
+
+**Disabling.** The console exists only while metrics are enabled. With
+`metrics.disabled: true`, `/dashboard` answers `404` and the path never falls
+through to the proxy, so the console leaves no surface at all. If metrics are
+enabled but the database cannot be opened, the console stays up and reports the
+reason instead of drawing empty charts.
+
+**Cost.** When a provider reports a price in the response (OpenRouter does,
+through `usage.cost`), it is recorded in `cost_usd` and shown as spend — in the
+Overview, per project/model/session and per request. A request whose provider
+reported no price shows `—`, so a known zero is never confused with "unpriced".
+The configuration is never exposed: the providers endpoint reports only
+whether an API key is present, never its value, and there is no settings page.
+
 ## Limits
 
 - Providers must speak the Anthropic Messages API. The proxy does not
@@ -171,7 +217,10 @@ internal/proxy/init.go      composition root (direct DI)
 internal/proxy/domain/      Router, Route (glob/regex + rewrite), Decision
 internal/proxy/app/         routeuc.RouteQueries implementation
 internal/proxy/inbound/http model extraction, rewrite, dispatch, logging
+internal/proxy/inbound/dashboard embedded console + read-only /dashboard/api JSON
+web/                        React sources for the console (Vite, TypeScript)
 internal/proxy/outbound/upstream  httputil.ReverseProxy per provider, auth policy
+internal/proxy/outbound/usage     SQLite usage store: recording and the metrics read side
 internal/pkg/jsonscan       zero-decode top-level JSON field locator
 internal/pkg/apierror       Anthropic-shaped error responses
 tests/e2e-api/              end-to-end routing tests with fake providers

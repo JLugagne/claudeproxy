@@ -13,6 +13,10 @@ type anthropicUsage struct {
 	OutputTokens             int64 `json:"output_tokens"`
 	CacheCreationInputTokens int64 `json:"cache_creation_input_tokens"`
 	CacheReadInputTokens     int64 `json:"cache_read_input_tokens"`
+	// Cost is the upstream-reported price in USD, when the provider sends one
+	// (OpenRouter does). It is a pointer so zero and absent stay distinct.
+	Cost      *float64 `json:"cost"`
+	TotalCost *float64 `json:"total_cost"`
 }
 
 // maxBufferedBodyBytes bounds what the parser keeps in memory.
@@ -141,7 +145,26 @@ func (p *usageParser) merge(u anthropicUsage) {
 	if u.CacheReadInputTokens != 0 {
 		p.totals.CacheReadInputTokens = u.CacheReadInputTokens
 	}
+	if cost := u.cost(); cost != nil {
+		p.totals.Cost = cost
+		p.totals.TotalCost = nil
+	}
 	if u.CacheCreationInputTokens != 0 {
 		p.totals.CacheCreationInputTokens = u.CacheCreationInputTokens
 	}
+}
+
+// cost returns the upstream-reported price in USD, when the provider sent one.
+func (u anthropicUsage) cost() *float64 {
+	if u.Cost != nil {
+		return u.Cost
+	}
+	return u.TotalCost
+}
+
+func costValue(cost *float64) float64 {
+	if cost == nil {
+		return 0
+	}
+	return *cost
 }

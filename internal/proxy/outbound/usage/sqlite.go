@@ -3,6 +3,8 @@ package usage
 import (
 	"database/sql"
 	"log/slog"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/JLugagne/claudeproxy/internal/proxy/domain"
@@ -25,17 +27,20 @@ CREATE TABLE IF NOT EXISTS usage (
 	cache_creation_tokens INTEGER NOT NULL,
 	status INTEGER NOT NULL,
 	duration_ms INTEGER NOT NULL,
-	stream INTEGER NOT NULL
+	stream INTEGER NOT NULL,
+	cost_usd REAL NOT NULL DEFAULT 0,
+	has_cost INTEGER NOT NULL DEFAULT 0
 );
 CREATE INDEX IF NOT EXISTS usage_project_ts ON usage(project, ts);
+CREATE INDEX IF NOT EXISTS usage_ts ON usage(ts);
 `
 
 const insertUsage = `
 INSERT INTO usage (
 	ts, project, session, provider, requested_model, upstream_model,
 	input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
-	status, duration_ms, stream
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	status, duration_ms, stream, cost_usd, has_cost
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 const (
@@ -56,6 +61,11 @@ type Store struct {
 // Open opens the database at path, creating it if needed, and applies the
 // schema. Callers must Close it to flush pending records.
 func Open(path string, logger *slog.Logger) (*Store, error) {
+	if dir := filepath.Dir(path); dir != "" && dir != "." {
+		if err := os.MkdirAll(dir, 0o750); err != nil {
+			return nil, err
+		}
+	}
 	db, err := sql.Open("sqlite", path)
 	if err != nil {
 		return nil, err
@@ -66,6 +76,10 @@ func Open(path string, logger *slog.Logger) (*Store, error) {
 		return nil, err
 	}
 	if _, err := db.Exec(schema); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if err := ensureColumns(db); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -138,6 +152,8 @@ func (s *Store) flush(batch []domain.Usage) {
 			u.Status,
 			u.Duration.Milliseconds(),
 			boolToInt(u.Stream),
+			u.CostUSD,
+			boolToInt(u.HasCost),
 		); err != nil {
 			s.logger.Warn("usage insert failed", "error", err)
 		}

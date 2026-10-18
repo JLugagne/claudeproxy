@@ -1,0 +1,8 @@
+.git
+.github
+bin/
+claudeproxy
+.design-studio
+.claude
+.scaffor
+web/node_modules

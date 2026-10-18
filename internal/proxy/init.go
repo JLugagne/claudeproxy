@@ -15,6 +15,7 @@ import (
 	"github.com/JLugagne/claudeproxy/internal/proxy/domain"
 	"github.com/JLugagne/claudeproxy/internal/proxy/domain/usecases/routeuc"
 	"github.com/JLugagne/claudeproxy/internal/proxy/domain/usecases/usageuc"
+	"github.com/JLugagne/claudeproxy/internal/proxy/inbound/dashboard"
 	inboundhttp "github.com/JLugagne/claudeproxy/internal/proxy/inbound/http"
 	"github.com/JLugagne/claudeproxy/internal/proxy/outbound/upstream"
 	"github.com/JLugagne/claudeproxy/internal/proxy/outbound/usage"
@@ -58,25 +59,48 @@ func New(cfg config.Config, metrics config.Metrics, logger *slog.Logger) (*Proxy
 
 	recorder := usageuc.Recorder(usageuc.Nop{})
 	var store *usage.Store
+	metricsErr := "usage metrics are disabled"
 	if metrics.Enabled() {
 		path, err := metrics.ResolvePath()
 		switch {
 		case err != nil:
+			metricsErr = "usage database path could not be resolved: " + err.Error()
 			logger.Warn("usage metrics disabled: cannot resolve database path", "error", err)
 		default:
 			if store, err = usage.Open(path, logger); err != nil {
+				metricsErr = "usage database could not be opened: " + err.Error()
 				logger.Warn("usage metrics disabled: cannot open database", "path", path, "error", err)
 				store = nil
 			} else {
 				recorder = store
+				metricsErr = ""
 				logger.Info("usage metrics enabled", "path", path)
 			}
 		}
 	}
 
+	consoleCfg := dashboard.Config{
+		MetricsError:    metricsErr,
+		DefaultProvider: cfg.DefaultProvider,
+		Providers:       providerInfos(cfg.Providers),
+		Routes:          routeInfos(cfg.Routes),
+	}
+	if store != nil {
+		consoleCfg.Queries = store
+	}
+
 	application := app.New(router)
+	handler := inboundhttp.NewHandler(application, upstreams, cfg.MaxBodyBytes, logger, inboundhttp.WithUsage(recorder))
+
+	// The console is only served when metrics are enabled: with metrics off
+	// there is nothing to read, so /dashboard does not exist at all rather than
+	// showing empty charts or falling through to the proxy.
+	var console http.Handler
+	if metrics.Enabled() {
+		console = dashboard.NewHandler(consoleCfg)
+	}
 	return &Proxy{
-		Handler:   inboundhttp.NewHandler(application, upstreams, cfg.MaxBodyBytes, logger, inboundhttp.WithUsage(recorder)),
+		Handler:   consoleMux{proxy: handler, console: console},
 		Routes:    application,
 		transport: transport,
 		usage:     store,

@@ -1,0 +1,85 @@
+/* Design tokens, ported from the design-studio project (prj_812723da).
+   Dark is the default; the light theme is the same catalogue with overrides. */
+
+:root {
+  --color-accent: #7c6cff;
+  --color-accent-soft: rgba(124, 108, 255, 0.14);
+  --color-accent-glow: rgba(124, 108, 255, 0.35);
+
+  --color-bg-canvas: #0b0d12;
+  --color-bg-inset: #0f1218;
+  --color-bg-panel: #14171f;
+  --color-bg-subtle: #1b1f29;
+
+  --color-border: #232936;
+  --color-border-strong: #2f3746;
+
+  --color-chart-1: #7c6cff;
+  --color-chart-2: #3ecf8e;
+  --color-chart-3: #5cc8ff;
+  --color-chart-4: #f5b454;
+  --color-chart-5: #f2607a;
+
+  --color-danger: #f2607a;
+  --color-info: #5cc8ff;
+  --color-success: #3ecf8e;
+  --color-warning: #f5b454;
+  --color-success-soft: rgba(62, 207, 142, 0.13);
+  --color-warning-soft: rgba(245, 180, 84, 0.15);
+
+  --color-text-primary: #e7ebf3;
+  --color-text-muted: #8b94a7;
+  --color-text-faint: #7e879b;
+
+  --font-sans: Inter, system-ui, -apple-system, sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, monospace;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 14px;
+  --radius-pill: 999px;
+
+  --shadow-panel: 0 1px 0 rgba(255, 255, 255, 0.03), 0 8px 24px rgba(0, 0, 0, 0.35);
+
+  --size-sidebar: 236px;
+
+  --space-xs: 4px;
+  --space-sm: 8px;
+  --space-md: 12px;
+  --space-lg: 16px;
+  --space-xl: 24px;
+  --space-2xl: 32px;
+
+  --text-xs: 11px;
+  --text-sm: 12px;
+  --text-base: 13px;
+  --text-md: 15px;
+  --text-lg: 20px;
+  --text-xl: 28px;
+
+  --grad-brand: linear-gradient(140deg, #9285ff 0%, #6a55f0 100%);
+  --grad-input: linear-gradient(180deg, #8273ff 0%, #5b49e6 100%);
+  --grad-output: linear-gradient(180deg, #46d29a 0%, #2fae79 100%);
+
+  color-scheme: dark;
+}
+
+:root[data-theme='light'] {
+  --color-accent: #6a55f0;
+
+  --color-bg-canvas: #f5f6fb;
+  --color-bg-inset: #f0f2f8;
+  --color-bg-panel: #ffffff;
+  --color-bg-subtle: #eef0f7;
+
+  --color-border: #e3e7f0;
+  --color-border-strong: #d2d8e5;
+
+  --color-text-primary: #0f1319;
+  --color-text-muted: #5b6477;
+  --color-text-faint: #636c7e;
+
+  --shadow-panel: 0 1px 0 rgba(16, 19, 26, 0.02), 0 6px 18px rgba(16, 19, 26, 0.06);
+
+  color-scheme: light;
+}

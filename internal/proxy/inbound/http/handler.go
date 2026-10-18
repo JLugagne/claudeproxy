@@ -184,6 +184,7 @@ func sessionFromBody(body []byte) string {
 func (h *Handler) finish(r *http.Request, decision domain.Decision, recorder *usageRecorder, start time.Time) {
 	h.logRequest(r, decision, recorder.statusRecorder, start)
 	parsed := recorder.parsed()
+	cost := parsed.cost()
 	h.usage.Record(domain.Usage{
 		Time:                     start,
 		Attribution:              domain.AttributionFrom(r.Context()),
@@ -197,5 +198,7 @@ func (h *Handler) finish(r *http.Request, decision domain.Decision, recorder *us
 		Status:                   recorder.status,
 		Duration:                 time.Since(start),
 		Stream:                   recorder.streaming(),
+		CostUSD:                  costValue(cost),
+		HasCost:                  cost != nil,
 	})
 }

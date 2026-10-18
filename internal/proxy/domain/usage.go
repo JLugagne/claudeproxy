@@ -17,4 +17,8 @@ type Usage struct {
 	Status                   int
 	Duration                 time.Duration
 	Stream                   bool
+	// CostUSD is the upstream-reported price in USD, when the provider sent one.
+	// HasCost distinguishes a free request from one the provider did not price.
+	CostUSD float64
+	HasCost bool
 }
