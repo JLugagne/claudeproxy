@@ -155,7 +155,7 @@ func (h *Handler) logRequest(r *http.Request, decision domain.Decision, recorder
 // id carried by the request body, then normalizes empty values to Unknown.
 func resolveAttribution(r *http.Request, body []byte) domain.Attribution {
 	return domain.Attribution{
-		Project: r.Header.Get("x-project"),
+		Project: projectOf(r, body),
 		Session: sessionFromBody(body),
 	}.Normalized()
 }
@@ -183,6 +183,9 @@ func sessionFromBody(body []byte) string {
 
 func (h *Handler) finish(r *http.Request, decision domain.Decision, recorder *usageRecorder, start time.Time) {
 	h.logRequest(r, decision, recorder.statusRecorder, start)
+	if !isModelCall(r) {
+		return
+	}
 	parsed := recorder.parsed()
 	cost := parsed.cost()
 	h.usage.Record(domain.Usage{
@@ -201,4 +204,53 @@ func (h *Handler) finish(r *http.Request, decision domain.Decision, recorder *us
 		CostUSD:                  costValue(cost),
 		HasCost:                  cost != nil,
 	})
+}
+
+// workingDirectoryMarker precedes the project directory in the environment
+// block Claude Code adds to its prompt.
+var workingDirectoryMarker = []byte("Primary working directory: ")
+
+// projectOf names the project of a request: the X-Project header when the
+// client sends one, else the directory Claude Code reports in its prompt. The
+// hook that sets the header only reaches commands run by the Bash tool, never
+// the API client, so the prompt is the usual source.
+func projectOf(r *http.Request, body []byte) string {
+	if project := r.Header.Get("x-project"); project != "" {
+		return project
+	}
+	return projectFromBody(body)
+}
+
+// projectFromBody returns the last two segments of the working directory found
+// in the body ("owner/repo" for a checkout such as .../github.com/owner/repo),
+// or an empty string when the body does not carry one.
+func projectFromBody(body []byte) string {
+	start := bytes.Index(body, workingDirectoryMarker)
+	if start < 0 {
+		return ""
+	}
+	rest := body[start+len(workingDirectoryMarker):]
+	// The body is JSON, so a newline inside the prompt appears as the two
+	// characters \n; the string itself ends at a quote.
+	end := bytes.IndexAny(rest, "\"\\\r\n")
+	if end < 0 {
+		end = len(rest)
+	}
+	var segments []string
+	for _, segment := range strings.Split(string(rest[:end]), "/") {
+		if segment != "" {
+			segments = append(segments, segment)
+		}
+	}
+	if len(segments) > 2 {
+		segments = segments[len(segments)-2:]
+	}
+	return strings.Join(segments, "/")
+}
+
+// isModelCall reports whether the request is a Messages API call, the only
+// requests that consume tokens. Others (the HEAD /api/hello connectivity check,
+// model listings...) are proxied and logged but not counted as usage.
+func isModelCall(r *http.Request) bool {
+	return r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, routedPathPrefix)
 }

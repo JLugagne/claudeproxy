@@ -235,3 +235,94 @@ func TestHandlerRecordsUsage(t *testing.T) {
 		t.Fatalf("usage %+v", usage)
 	}
 }
+
+func TestAttributionProjectFromWorkingDirectory(t *testing.T) {
+	const env = `# Environment\n - Primary working directory: `
+	for name, tc := range map[string]struct {
+		header string
+		body   string
+		want   string
+	}{
+		"owner and repo from the last two path segments": {
+			body: `{"model":"claude-opus","system":[{"type":"text","text":"` + env + `/home/user/src/github.com/JLugagne/claudeproxy\n - Is a git repository: true"}]}`,
+			want: "JLugagne/claudeproxy",
+		},
+		"directory closing the string": {
+			body: `{"model":"claude-opus","system":"` + env + `/srv/app"}`,
+			want: "srv/app",
+		},
+		"single segment": {
+			body: `{"model":"claude-opus","system":"` + env + `/app\n"}`,
+			want: "app",
+		},
+		"trailing slash": {
+			body: `{"model":"claude-opus","system":"` + env + `/work/proj/\n"}`,
+			want: "work/proj",
+		},
+		"header wins over the prompt": {
+			header: "owner/repo",
+			body:   `{"model":"claude-opus","system":"` + env + `/srv/app\n"}`,
+			want:   "owner/repo",
+		},
+		"no working directory": {
+			body: `{"model":"claude-opus","system":"nothing here"}`,
+			want: "unknown",
+		},
+		"root only": {
+			body: `{"model":"claude-opus","system":"` + env + `/\n"}`,
+			want: "unknown",
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			var got domain.Attribution
+			upstreams := map[domain.ProviderName]http.Handler{"anthropic": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				got = domain.AttributionFrom(r.Context())
+				w.WriteHeader(http.StatusAccepted)
+			})}
+			routes := staticRoutes(t, "claude-opus", domain.Decision{Provider: "anthropic", Model: "claude-opus", Requested: "claude-opus"})
+			handler := inboundhttp.NewHandler(routes, upstreams, 1<<20, slog.New(slog.DiscardHandler))
+
+			req := httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(tc.body))
+			if tc.header != "" {
+				req.Header.Set("x-project", tc.header)
+			}
+			serve(handler, req)
+
+			if got.Project != tc.want {
+				t.Fatalf("project = %q, want %q", got.Project, tc.want)
+			}
+		})
+	}
+}
+
+func TestUsageIgnoresRequestsThatAreNotModelCalls(t *testing.T) {
+	for name, tc := range map[string]struct {
+		method, path string
+		recorded     int
+	}{
+		"connectivity check":  {http.MethodHead, "/api/hello", 0},
+		"model listing":       {http.MethodGet, "/v1/models", 0},
+		"messages call":       {http.MethodPost, "/v1/messages", 1},
+		"token count":         {http.MethodPost, "/v1/messages/count_tokens", 1},
+		"messages with query": {http.MethodPost, "/v1/messages?beta=true", 1},
+	} {
+		t.Run(name, func(t *testing.T) {
+			upstreams := map[domain.ProviderName]http.Handler{"anthropic": http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+				w.WriteHeader(http.StatusOK)
+			})}
+			routes := &routeuctest.MockRouteQueries{
+				ResolveRouteFn: func(context.Context, domain.Model) (domain.Decision, error) {
+					return domain.Decision{Provider: "anthropic"}, nil
+				},
+			}
+			recorder := &usageuctest.MockRecorder{}
+			handler := inboundhttp.NewHandler(routes, upstreams, 1<<20, slog.New(slog.DiscardHandler), inboundhttp.WithUsage(recorder))
+
+			serve(handler, httptest.NewRequest(tc.method, tc.path, strings.NewReader(`{"model":"claude-opus"}`)))
+
+			if got := len(recorder.Recorded()); got != tc.recorded {
+				t.Fatalf("recorded %d usages, want %d", got, tc.recorded)
+			}
+		})
+	}
+}

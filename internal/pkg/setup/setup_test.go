@@ -3,6 +3,7 @@ package setup
 import (
 	"encoding/json"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -97,4 +98,38 @@ func countSessionStartHooks(t *testing.T, settings map[string]any) int {
 		return 0
 	}
 	return len(sessionStart)
+}
+
+func TestHookNamesTheProjectWithoutGitSuffix(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("git is not installed")
+	}
+	repo := t.TempDir()
+	for _, args := range [][]string{
+		{"init", "-q"},
+		{"remote", "add", "origin", "git@github.com:owner/repo.git"},
+	} {
+		if out, err := exec.Command("git", append([]string{"-C", repo}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v: %s", args, err, out)
+		}
+	}
+	script := filepath.Join(t.TempDir(), "x-project.sh")
+	if err := writeScript(script); err != nil {
+		t.Fatal(err)
+	}
+	envFile := filepath.Join(t.TempDir(), "env")
+
+	cmd := exec.Command("sh", script)
+	cmd.Env = append(os.Environ(), "CLAUDE_ENV_FILE="+envFile, "CLAUDE_PROJECT_DIR="+repo)
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("hook failed: %v: %s", err, out)
+	}
+
+	got, err := os.ReadFile(envFile)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := `export ANTHROPIC_CUSTOM_HEADERS="X-Project: owner/repo"` + "\n"; string(got) != want {
+		t.Fatalf("env file = %q, want %q", got, want)
+	}
 }

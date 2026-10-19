@@ -574,3 +574,29 @@ func TestKeepClaudeMetadataOptsOut(t *testing.T) {
 		t.Fatalf("opt-out body was modified\n got %s\nwant %s", got, body)
 	}
 }
+
+func TestAcceptEncodingIsNeverForwarded(t *testing.T) {
+	for name, cfg := range map[string]func(*url.URL) upstream.Config{
+		"passthrough": func(u *url.URL) upstream.Config {
+			return upstream.Config{Name: "anthropic", BaseURL: u, Auth: upstream.AuthPassthrough}
+		},
+		"bearer": func(u *url.URL) upstream.Config {
+			return upstream.Config{Name: "other", BaseURL: u, Auth: upstream.AuthBearer, APIKey: "sk-x"}
+		},
+	} {
+		t.Run(name, func(t *testing.T) {
+			server, requests := newCapturingServer(t)
+			proxy := newProxy(t, cfg(mustURL(t, server.URL)))
+			req := newClientRequest(t, proxy.URL)
+			req.Header.Set("Accept-Encoding", "gzip, deflate, br, zstd")
+
+			do(t, req)
+
+			// A compressed response cannot be read for its usage counters, so
+			// the provider is asked for an identity encoding.
+			if got := (<-requests).header.Get("Accept-Encoding"); got != "" {
+				t.Errorf("Accept-Encoding = %q, want it removed", got)
+			}
+		})
+	}
+}

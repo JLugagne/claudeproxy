@@ -170,6 +170,9 @@ func rewriter(cfg Config) func(*httputil.ProxyRequest) {
 		for _, name := range proxyMetaHeaders {
 			header.Del(name)
 		}
+		// The usage counters are read from the response, which a compressed
+		// body hides: ask the provider for an identity encoding.
+		header.Del("Accept-Encoding")
 		if cfg.Auth != AuthPassthrough {
 			for _, name := range claudeIdentityHeaders {
 				header.Del(name)

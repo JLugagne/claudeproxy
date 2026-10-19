@@ -14,7 +14,7 @@ import (
 const hookScript = `#!/bin/sh
 [ -n "$CLAUDE_ENV_FILE" ] || exit 0
 dir="${CLAUDE_PROJECT_DIR:-$PWD}"
-proj=$(git -C "$dir" remote get-url origin 2>/dev/null | sed -E 's#.*[:/]([^/]+/[^/]+?)(\.git)?$#\1#')
+proj=$(git -C "$dir" remote get-url origin 2>/dev/null | sed -E 's#\.git$##; s#.*[:/]([^/]+/[^/]+)$#\1#')
 proj=${proj:-$(basename "$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)")}
 proj=${proj:-$dir}
 printf 'export ANTHROPIC_CUSTOM_HEADERS="X-Project: %s"\n' "$proj" >> "$CLAUDE_ENV_FILE"
