@@ -108,6 +108,9 @@ export function Overview({ range }: { range: Range }) {
               Latency
             </Th>
             <Th w={80} right>
+              TTFT
+            </Th>
+            <Th w={80} right>
               Cost
             </Th>
             <Th w={84} right>
@@ -143,6 +146,9 @@ export function Overview({ range }: { range: Range }) {
                 </Cell>
                 <Cell w={80} right className="mono cell-sm muted">
                   {formatLatency(row.durationMs)}
+                </Cell>
+                <Cell w={80} right className="mono cell-sm muted">
+                  {formatLatency(row.ttftMs)}
                 </Cell>
                 <Cell w={80} right className="mono cell-sm muted">
                   {formatCost(row.costUSD)}

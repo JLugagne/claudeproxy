@@ -16,7 +16,11 @@ type Usage struct {
 	CacheCreationInputTokens int64
 	Status                   int
 	Duration                 time.Duration
-	Stream                   bool
+	// TimeToFirstToken is the delay until the first generated content reached the
+	// client: the first content delta of a stream, or the first body byte of a
+	// non-streaming response. Zero means it was not measured, as on errors.
+	TimeToFirstToken time.Duration
+	Stream           bool
 	// CostUSD is the upstream-reported price in USD, when the provider sent one.
 	// HasCost distinguishes a free request from one the provider did not price.
 	CostUSD float64

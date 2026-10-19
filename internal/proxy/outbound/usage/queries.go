@@ -21,7 +21,10 @@ const costExpr = "COALESCE(SUM(CASE WHEN has_cost = 1 THEN cost_usd ELSE 0 END),
 // Totals aggregates every request in the range.
 func (s *Store) Totals(ctx context.Context, r domain.MetricsRange) (domain.MetricsTotals, error) {
 	since, until := r.Since.UnixMilli(), r.Until.UnixMilli()
-	var totals domain.MetricsTotals
+	var (
+		totals   domain.MetricsTotals
+		measured int64
+	)
 	err := s.db.QueryRowContext(ctx, `
 SELECT COUNT(*),
        COALESCE(SUM(input_tokens),0),
@@ -31,7 +34,9 @@ SELECT COUNT(*),
        COALESCE(SUM(CASE WHEN status >= 400 THEN 1 ELSE 0 END),0),
        COALESCE(SUM(CASE WHEN has_cost = 1 THEN 1 ELSE 0 END),0),
        `+costExpr+`,
-       COALESCE(AVG(duration_ms),0)
+       COALESCE(AVG(duration_ms),0),
+       COALESCE(AVG(ttft_ms),0),
+       COUNT(ttft_ms)
 FROM usage WHERE ts >= ? AND ts < ?`, since, until).
 		Scan(
 			&totals.Requests,
@@ -43,22 +48,16 @@ FROM usage WHERE ts >= ? AND ts < ?`, since, until).
 			&totals.PricedRequests,
 			&totals.CostUSD,
 			&totals.AvgLatencyMs,
+			&totals.AvgTTFTMs,
+			&measured,
 		)
 	if err != nil {
 		return domain.MetricsTotals{}, err
 	}
-	if totals.Requests == 0 {
-		return totals, nil
+	if totals.P95LatencyMs, err = s.p95(ctx, "duration_ms", since, until, totals.Requests); err != nil {
+		return domain.MetricsTotals{}, err
 	}
-	offset := int64(float64(totals.Requests) * 0.95)
-	if offset >= totals.Requests {
-		offset = totals.Requests - 1
-	}
-	err = s.db.QueryRowContext(ctx,
-		`SELECT duration_ms FROM usage WHERE ts >= ? AND ts < ? ORDER BY duration_ms LIMIT 1 OFFSET ?`,
-		since, until, offset,
-	).Scan(&totals.P95LatencyMs)
-	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+	if totals.P95TTFTMs, err = s.p95(ctx, "ttft_ms", since, until, measured); err != nil {
 		return domain.MetricsTotals{}, err
 	}
 	return totals, nil
@@ -127,6 +126,7 @@ SELECT project,
        COALESCE(SUM(cache_read_tokens),0),
        COALESCE(SUM(cache_creation_tokens),0),
        COALESCE(AVG(duration_ms),0),
+       COALESCE(AVG(ttft_ms),0),
        `+costExpr+`
 FROM usage WHERE ts >= ? AND ts < ?
 GROUP BY project
@@ -143,6 +143,7 @@ ORDER BY SUM(input_tokens + output_tokens) DESC`,
 				&stat.CacheReadTokens,
 				&stat.CacheCreationTokens,
 				&stat.AvgLatencyMs,
+				&stat.AvgTTFTMs,
 				&stat.CostUSD,
 			)
 			return stat, err
@@ -157,6 +158,7 @@ SELECT requested_model,
        COUNT(*),
        COALESCE(SUM(input_tokens + output_tokens),0),
        COALESCE(AVG(duration_ms),0),
+       COALESCE(AVG(ttft_ms),0),
        COALESCE(SUM(CASE WHEN status >= 400 THEN 1 ELSE 0 END),0),
        `+costExpr+`
 FROM usage WHERE ts >= ? AND ts < ?
@@ -171,6 +173,7 @@ ORDER BY SUM(input_tokens + output_tokens) DESC`,
 				&stat.Requests,
 				&stat.Tokens,
 				&stat.AvgLatencyMs,
+				&stat.AvgTTFTMs,
 				&stat.Errors,
 				&stat.CostUSD,
 			)
@@ -232,6 +235,7 @@ SELECT provider,
        COUNT(*),
        COALESCE(SUM(input_tokens + output_tokens),0),
        COALESCE(AVG(duration_ms),0),
+       COALESCE(AVG(ttft_ms),0),
        COALESCE(SUM(CASE WHEN status >= 400 THEN 1 ELSE 0 END),0),
        `+costExpr+`
 FROM usage WHERE ts >= ? AND ts < ?
@@ -245,6 +249,7 @@ ORDER BY COUNT(*) DESC`,
 				&stat.Requests,
 				&stat.Tokens,
 				&stat.AvgLatencyMs,
+				&stat.AvgTTFTMs,
 				&stat.Errors,
 				&stat.CostUSD,
 			)
@@ -288,7 +293,7 @@ func (s *Store) Requests(ctx context.Context, r domain.MetricsRange, f domain.Us
 	rows, err := s.db.QueryContext(ctx, `
 SELECT ts, project, session, provider, requested_model, upstream_model,
        input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
-       status, duration_ms, stream, cost_usd, has_cost
+       status, duration_ms, COALESCE(ttft_ms,0), stream, cost_usd, has_cost
 FROM usage WHERE `+clause+`
 ORDER BY ts DESC
 LIMIT ?`, append(args, limit)...)
@@ -318,6 +323,7 @@ LIMIT ?`, append(args, limit)...)
 			&row.CacheCreationTokens,
 			&row.Status,
 			&row.DurationMs,
+			&row.TTFTMs,
 			&stream,
 			&row.CostUSD,
 			&hasCost,
@@ -349,4 +355,25 @@ func queryAll[T any](ctx context.Context, db *sql.DB, query string, args []any, 
 		items = append(items, item)
 	}
 	return items, rows.Err()
+}
+
+// p95 returns the 95th percentile of column over the count non-NULL values in
+// the range. column is one of the package's own column names, never user input.
+func (s *Store) p95(ctx context.Context, column string, since, until, count int64) (int64, error) {
+	if count == 0 {
+		return 0, nil
+	}
+	offset := int64(float64(count) * 0.95)
+	if offset >= count {
+		offset = count - 1
+	}
+	var value int64
+	err := s.db.QueryRowContext(ctx,
+		`SELECT `+column+` FROM usage WHERE ts >= ? AND ts < ? AND `+column+` IS NOT NULL ORDER BY `+column+` LIMIT 1 OFFSET ?`,
+		since, until, offset,
+	).Scan(&value)
+	if err != nil && !errors.Is(err, sql.ErrNoRows) {
+		return 0, err
+	}
+	return value, nil
 }

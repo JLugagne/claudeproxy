@@ -60,6 +60,9 @@ export function Models({ range }: { range: Range }) {
               Latency
             </Th>
             <Th w={80} right>
+              TTFT
+            </Th>
+            <Th w={80} right>
               Errors
             </Th>
             <Th w={130} className="pad-16">
@@ -94,6 +97,9 @@ export function Models({ range }: { range: Range }) {
                 </Cell>
                 <Cell w={92} right className="mono cell-sm muted">
                   {formatLatency(row.avgLatencyMs)}
+                </Cell>
+                <Cell w={80} right className="mono cell-sm muted">
+                  {formatLatency(row.avgTtftMs)}
                 </Cell>
                 <Cell w={80} right className={row.errors > 0 ? 'mono cell-sm warning' : 'mono cell-sm muted'}>
                   {formatCount(row.errors)}
@@ -130,6 +136,9 @@ export function Models({ range }: { range: Range }) {
               </Cell>
               <Cell w={92} right className="mono cell-sm primary">
                 {formatLatency(totals.avgLatencyMs)}
+              </Cell>
+              <Cell w={80} right className="mono cell-sm primary">
+                {formatLatency(totals.avgTtftMs)}
               </Cell>
               <Cell w={80} right className="mono cell-sm primary">
                 {formatCount(totals.errors)}

@@ -9,6 +9,8 @@ export type Totals = {
   cacheHitRate: number
   avgLatencyMs: number
   p95LatencyMs: number
+  avgTtftMs: number
+  p95TtftMs: number
   errors: number
   costUSD: number
   pricedRequests: number
@@ -40,6 +42,7 @@ export type RequestRow = {
   cacheCreationTokens: number
   status: number
   durationMs: number
+  ttftMs: number
   stream: boolean
   costUSD: number
   hasCost: boolean
@@ -53,6 +56,7 @@ export type Project = {
   outputTokens: number
   cacheHitRate: number
   avgLatencyMs: number
+  avgTtftMs: number
   costUSD: number
 }
 
@@ -62,6 +66,7 @@ export type Model = {
   requests: number
   tokens: number
   avgLatencyMs: number
+  avgTtftMs: number
   errors: number
   costUSD: number
 }
@@ -85,6 +90,7 @@ export type Provider = {
   requests: number
   tokens: number
   avgLatencyMs: number
+  avgTtftMs: number
   errors: number
   costUSD: number
 }

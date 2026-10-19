@@ -27,6 +27,7 @@ CREATE TABLE IF NOT EXISTS usage (
 	cache_creation_tokens INTEGER NOT NULL,
 	status INTEGER NOT NULL,
 	duration_ms INTEGER NOT NULL,
+	ttft_ms INTEGER,
 	stream INTEGER NOT NULL,
 	cost_usd REAL NOT NULL DEFAULT 0,
 	has_cost INTEGER NOT NULL DEFAULT 0
@@ -39,8 +40,8 @@ const insertUsage = `
 INSERT INTO usage (
 	ts, project, session, provider, requested_model, upstream_model,
 	input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens,
-	status, duration_ms, stream, cost_usd, has_cost
-) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	status, duration_ms, ttft_ms, stream, cost_usd, has_cost
+) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
 const (
@@ -151,6 +152,7 @@ func (s *Store) flush(batch []domain.Usage) {
 			u.CacheCreationInputTokens,
 			u.Status,
 			u.Duration.Milliseconds(),
+			nullableMs(u.TimeToFirstToken.Milliseconds()),
 			boolToInt(u.Stream),
 			u.CostUSD,
 			boolToInt(u.HasCost),
@@ -176,4 +178,12 @@ func boolToInt(b bool) int {
 		return 1
 	}
 	return 0
+}
+
+// nullableMs stores an unmeasured duration as NULL, so AVG and the p95 skip it.
+func nullableMs(ms int64) any {
+	if ms <= 0 {
+		return nil
+	}
+	return ms
 }

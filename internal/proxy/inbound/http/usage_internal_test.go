@@ -31,3 +31,27 @@ func TestUsageParserSplitsChunks(t *testing.T) {
 		t.Fatalf("usage %+v", got)
 	}
 }
+
+func TestUsageParserMarksFirstTokenOnContentDelta(t *testing.T) {
+	p := newUsageParser(true)
+	p.Write([]byte("event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":10}}}\n\n"))
+	p.Write([]byte("event: ping\ndata: {\"type\":\"ping\"}\n\n"))
+	if p.firstToken {
+		t.Fatalf("first token marked before any content delta")
+	}
+	p.Write([]byte("event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n"))
+	if !p.firstToken {
+		t.Fatalf("first token not marked on content_block_delta")
+	}
+}
+
+func TestUsageParserMarksFirstTokenOnJSONBody(t *testing.T) {
+	p := newUsageParser(false)
+	if p.firstToken {
+		t.Fatalf("first token marked before the body")
+	}
+	p.Write([]byte(`{"usage":{"output_tokens":1}}`))
+	if !p.firstToken {
+		t.Fatalf("first token not marked on the first body byte")
+	}
+}

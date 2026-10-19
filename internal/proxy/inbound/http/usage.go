@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // anthropicUsage mirrors the usage object of the Messages API.
@@ -27,7 +28,8 @@ const maxBufferedBodyBytes = 1 << 20
 // so the reverse proxy still sees the underlying Flusher.
 type usageRecorder struct {
 	*statusRecorder
-	parser *usageParser
+	parser       *usageParser
+	firstTokenAt time.Time
 }
 
 func newUsageRecorder(w http.ResponseWriter) *usageRecorder {
@@ -42,6 +44,9 @@ func (u *usageRecorder) WriteHeader(status int) {
 func (u *usageRecorder) Write(p []byte) (int, error) {
 	u.ensureParser()
 	u.parser.Write(p)
+	if u.firstTokenAt.IsZero() && u.parser.firstToken {
+		u.firstTokenAt = time.Now()
+	}
 	return u.statusRecorder.Write(p)
 }
 
@@ -68,6 +73,9 @@ type usageParser struct {
 	stream bool
 	buf    []byte
 	totals anthropicUsage
+	// firstToken reports that generated content was seen: a content delta in a
+	// stream, any byte of a single JSON body.
+	firstToken bool
 }
 
 func newUsageParser(stream bool) *usageParser {
@@ -78,6 +86,9 @@ func (p *usageParser) Write(chunk []byte) {
 	if p.stream {
 		p.writeStream(chunk)
 		return
+	}
+	if len(chunk) > 0 {
+		p.firstToken = true
 	}
 	if len(p.buf) < maxBufferedBodyBytes {
 		p.buf = append(p.buf, chunk...)
@@ -119,6 +130,7 @@ func (p *usageParser) mergeEvent(line []byte) {
 		return
 	}
 	var event struct {
+		Type    string          `json:"type"`
 		Usage   *anthropicUsage `json:"usage"`
 		Message *struct {
 			Usage *anthropicUsage `json:"usage"`
@@ -126,6 +138,9 @@ func (p *usageParser) mergeEvent(line []byte) {
 	}
 	if json.Unmarshal(bytes.TrimSpace(data), &event) != nil {
 		return
+	}
+	if event.Type == "content_block_delta" {
+		p.firstToken = true
 	}
 	if event.Message != nil && event.Message.Usage != nil {
 		p.merge(*event.Message.Usage)
@@ -167,4 +182,13 @@ func costValue(cost *float64) float64 {
 		return 0
 	}
 	return *cost
+}
+
+// timeToFirstToken is the delay between start and the first generated content,
+// or zero when none was written.
+func (u *usageRecorder) timeToFirstToken(start time.Time) time.Duration {
+	if u.firstTokenAt.IsZero() {
+		return 0
+	}
+	return u.firstTokenAt.Sub(start)
 }

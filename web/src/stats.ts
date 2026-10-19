@@ -8,7 +8,7 @@ export type Stat = {
   tone?: 'success' | 'warning'
 }
 
-/** The four traffic stats shared by Overview and Projects, plus spend when the
+/** The five traffic stats shared by Overview and Projects, plus spend when the
  *  provider actually reported prices. */
 export function trafficStats(totals: Totals): Stat[] {
   const stats: Stat[] = [
@@ -27,6 +27,11 @@ export function trafficStats(totals: Totals): Stat[] {
       label: 'Avg latency',
       value: formatLatency(totals.avgLatencyMs),
       sub: `p95 ${formatLatency(totals.p95LatencyMs)}`,
+    },
+    {
+      label: 'Time to first token',
+      value: formatLatency(totals.avgTtftMs),
+      sub: `p95 ${formatLatency(totals.p95TtftMs)}`,
     },
   ]
   return withSpend(stats, totals)

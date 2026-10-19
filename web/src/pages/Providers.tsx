@@ -63,6 +63,10 @@ export function Providers({ range }: { range: Range }) {
                 <span className="metric-label">avg latency</span>
               </div>
               <div className="metric">
+                <span className="metric-value">{formatLatency(provider.avgTtftMs)}</span>
+                <span className="metric-label">avg TTFT</span>
+              </div>
+              <div className="metric">
                 <span className="metric-value">{formatCost(provider.costUSD)}</span>
                 <span className="metric-label">spend</span>
               </div>

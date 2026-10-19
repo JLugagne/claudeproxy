@@ -348,6 +348,8 @@ type totalsDTO struct {
 	CacheHitRate        float64 `json:"cacheHitRate"`
 	AvgLatencyMs        float64 `json:"avgLatencyMs"`
 	P95LatencyMs        int64   `json:"p95LatencyMs"`
+	AvgTTFTMs           float64 `json:"avgTtftMs"`
+	P95TTFTMs           int64   `json:"p95TtftMs"`
 	Errors              int64   `json:"errors"`
 	CostUSD             float64 `json:"costUSD"`
 	PricedRequests      int64   `json:"pricedRequests"`
@@ -379,6 +381,7 @@ type requestDTO struct {
 	CacheCreationTokens int64     `json:"cacheCreationTokens"`
 	Status              int       `json:"status"`
 	DurationMs          int64     `json:"durationMs"`
+	TTFTMs              int64     `json:"ttftMs"`
 	Stream              bool      `json:"stream"`
 	CostUSD             float64   `json:"costUSD"`
 	HasCost             bool      `json:"hasCost"`
@@ -392,6 +395,7 @@ type projectDTO struct {
 	OutputTokens int64   `json:"outputTokens"`
 	CacheHitRate float64 `json:"cacheHitRate"`
 	AvgLatencyMs float64 `json:"avgLatencyMs"`
+	AvgTTFTMs    float64 `json:"avgTtftMs"`
 	CostUSD      float64 `json:"costUSD"`
 }
 
@@ -401,6 +405,7 @@ type modelDTO struct {
 	Requests     int64   `json:"requests"`
 	Tokens       int64   `json:"tokens"`
 	AvgLatencyMs float64 `json:"avgLatencyMs"`
+	AvgTTFTMs    float64 `json:"avgTtftMs"`
 	Errors       int64   `json:"errors"`
 	CostUSD      float64 `json:"costUSD"`
 }
@@ -424,6 +429,7 @@ type providerDTO struct {
 	Requests     int64   `json:"requests"`
 	Tokens       int64   `json:"tokens"`
 	AvgLatencyMs float64 `json:"avgLatencyMs"`
+	AvgTTFTMs    float64 `json:"avgTtftMs"`
 	Errors       int64   `json:"errors"`
 	CostUSD      float64 `json:"costUSD"`
 }
@@ -488,6 +494,8 @@ func newTotals(t domain.MetricsTotals) totalsDTO {
 		CacheHitRate:        t.CacheHitRate(),
 		AvgLatencyMs:        t.AvgLatencyMs,
 		P95LatencyMs:        t.P95LatencyMs,
+		AvgTTFTMs:           t.AvgTTFTMs,
+		P95TTFTMs:           t.P95TTFTMs,
 		Errors:              t.Errors,
 		CostUSD:             t.CostUSD,
 		PricedRequests:      t.PricedRequests,
@@ -540,6 +548,7 @@ func newProjects(stats []domain.ProjectStat) []projectDTO {
 			OutputTokens: stat.OutputTokens,
 			CacheHitRate: stat.CacheHitRate(),
 			AvgLatencyMs: stat.AvgLatencyMs,
+			AvgTTFTMs:    stat.AvgTTFTMs,
 			CostUSD:      stat.CostUSD,
 		})
 	}
@@ -555,6 +564,7 @@ func newModels(stats []domain.ModelStat) []modelDTO {
 			Requests:     stat.Requests,
 			Tokens:       stat.Tokens,
 			AvgLatencyMs: stat.AvgLatencyMs,
+			AvgTTFTMs:    stat.AvgTTFTMs,
 			Errors:       stat.Errors,
 			CostUSD:      stat.CostUSD,
 		})
@@ -578,6 +588,7 @@ func newRequests(rows []domain.UsageRow) []requestDTO {
 			CacheCreationTokens: row.CacheCreationTokens,
 			Status:              row.Status,
 			DurationMs:          row.DurationMs,
+			TTFTMs:              row.TTFTMs,
 			Stream:              row.Stream,
 			CostUSD:             row.CostUSD,
 			HasCost:             row.HasCost,
@@ -612,6 +623,7 @@ func newProvider(info ProviderInfo, stat domain.ProviderStat) providerDTO {
 		Requests:     stat.Requests,
 		Tokens:       stat.Tokens,
 		AvgLatencyMs: stat.AvgLatencyMs,
+		AvgTTFTMs:    stat.AvgTTFTMs,
 		Errors:       stat.Errors,
 		CostUSD:      stat.CostUSD,
 	}

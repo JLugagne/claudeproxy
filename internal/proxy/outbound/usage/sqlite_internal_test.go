@@ -28,6 +28,7 @@ func TestStoreRoundTrip(t *testing.T) {
 		CacheCreationInputTokens: 4,
 		Status:                   200,
 		Duration:                 1500 * time.Millisecond,
+		TimeToFirstToken:         300 * time.Millisecond,
 		Stream:                   true,
 	})
 	if err := store.Close(); err != nil {
@@ -43,14 +44,14 @@ func TestStoreRoundTrip(t *testing.T) {
 	var (
 		project, session, provider, requested, upstream   string
 		in, out, cacheRead, cacheCreate, status, duration int
-		stream                                            int
+		stream, ttft                                      int
 	)
-	err = db.QueryRow(`SELECT project, session, provider, requested_model, upstream_model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, status, duration_ms, stream FROM usage`).
-		Scan(&project, &session, &provider, &requested, &upstream, &in, &out, &cacheRead, &cacheCreate, &status, &duration, &stream)
+	err = db.QueryRow(`SELECT project, session, provider, requested_model, upstream_model, input_tokens, output_tokens, cache_read_tokens, cache_creation_tokens, status, duration_ms, stream, ttft_ms FROM usage`).
+		Scan(&project, &session, &provider, &requested, &upstream, &in, &out, &cacheRead, &cacheCreate, &status, &duration, &stream, &ttft)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if project != "owner/repo" || session != "s1" || provider != "openrouter" || requested != "claude-x" || upstream != "deepseek/chat" || in != 11 || out != 22 || cacheRead != 3 || cacheCreate != 4 || status != 200 || duration != 1500 || stream != 1 {
-		t.Fatalf("row = %s %s %s %s %s %d %d %d %d %d %d %d", project, session, provider, requested, upstream, in, out, cacheRead, cacheCreate, status, duration, stream)
+	if project != "owner/repo" || session != "s1" || provider != "openrouter" || requested != "claude-x" || upstream != "deepseek/chat" || in != 11 || out != 22 || cacheRead != 3 || cacheCreate != 4 || status != 200 || duration != 1500 || stream != 1 || ttft != 300 {
+		t.Fatalf("row = %s %s %s %s %s %d %d %d %d %d %d %d %d", project, session, provider, requested, upstream, in, out, cacheRead, cacheCreate, status, duration, stream, ttft)
 	}
 }

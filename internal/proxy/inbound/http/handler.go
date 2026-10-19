@@ -188,6 +188,10 @@ func (h *Handler) finish(r *http.Request, decision domain.Decision, recorder *us
 	}
 	parsed := recorder.parsed()
 	cost := parsed.cost()
+	var ttft time.Duration
+	if recorder.status < http.StatusBadRequest {
+		ttft = recorder.timeToFirstToken(start)
+	}
 	h.usage.Record(domain.Usage{
 		Time:                     start,
 		Attribution:              domain.AttributionFrom(r.Context()),
@@ -200,6 +204,7 @@ func (h *Handler) finish(r *http.Request, decision domain.Decision, recorder *us
 		CacheCreationInputTokens: parsed.CacheCreationInputTokens,
 		Status:                   recorder.status,
 		Duration:                 time.Since(start),
+		TimeToFirstToken:         ttft,
 		Stream:                   recorder.streaming(),
 		CostUSD:                  costValue(cost),
 		HasCost:                  cost != nil,

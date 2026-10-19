@@ -8,6 +8,7 @@ import (
 	"net/http/httptest"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/JLugagne/claudeproxy/internal/proxy/domain"
 	"github.com/JLugagne/claudeproxy/internal/proxy/domain/usecases/routeuc/routeuctest"
@@ -324,5 +325,52 @@ func TestUsageIgnoresRequestsThatAreNotModelCalls(t *testing.T) {
 				t.Fatalf("recorded %d usages, want %d", got, tc.recorded)
 			}
 		})
+	}
+}
+
+func TestHandlerRecordsTimeToFirstToken(t *testing.T) {
+	upstreams := map[domain.ProviderName]http.Handler{"anthropic": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, "event: message_start\ndata: {\"type\":\"message_start\",\"message\":{\"usage\":{\"input_tokens\":5}}}\n\n")
+		time.Sleep(10 * time.Millisecond)
+		_, _ = io.WriteString(w, "event: content_block_delta\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"hi\"}}\n\n")
+		time.Sleep(10 * time.Millisecond)
+		_, _ = io.WriteString(w, "event: message_delta\ndata: {\"type\":\"message_delta\",\"usage\":{\"output_tokens\":1}}\n\n")
+	})}
+	routes := staticRoutes(t, "claude-opus", domain.Decision{Provider: "anthropic", Model: "claude-opus", Requested: "claude-opus"})
+	recorder := &usageuctest.MockRecorder{}
+	handler := inboundhttp.NewHandler(routes, upstreams, 1<<20, slog.New(slog.DiscardHandler), inboundhttp.WithUsage(recorder))
+
+	serve(handler, httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-opus"}`)))
+
+	got := recorder.Recorded()
+	if len(got) != 1 {
+		t.Fatalf("recorded %d usages, want 1", len(got))
+	}
+	usage := got[0]
+	if usage.TimeToFirstToken < 10*time.Millisecond || usage.TimeToFirstToken >= usage.Duration {
+		t.Fatalf("ttft = %v, duration = %v; want the first content delta, after message_start and before the end", usage.TimeToFirstToken, usage.Duration)
+	}
+}
+
+func TestHandlerSkipsTimeToFirstTokenOnErrors(t *testing.T) {
+	upstreams := map[domain.ProviderName]http.Handler{"anthropic": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(http.StatusTooManyRequests)
+		_, _ = io.WriteString(w, `{"type":"error","error":{"type":"rate_limit_error"}}`)
+	})}
+	routes := staticRoutes(t, "claude-opus", domain.Decision{Provider: "anthropic", Model: "claude-opus", Requested: "claude-opus"})
+	recorder := &usageuctest.MockRecorder{}
+	handler := inboundhttp.NewHandler(routes, upstreams, 1<<20, slog.New(slog.DiscardHandler), inboundhttp.WithUsage(recorder))
+
+	serve(handler, httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-opus"}`)))
+
+	got := recorder.Recorded()
+	if len(got) != 1 {
+		t.Fatalf("recorded %d usages, want 1", len(got))
+	}
+	if got[0].TimeToFirstToken != 0 {
+		t.Fatalf("ttft = %v on an error response, want 0", got[0].TimeToFirstToken)
 	}
 }

@@ -40,6 +40,7 @@ export function Requests({ range }: { range: Range }) {
         'cache_read_tokens',
         'cache_creation_tokens',
         'latency_ms',
+        'ttft_ms',
         'cost_usd',
         'status',
         'stream',
@@ -56,6 +57,7 @@ export function Requests({ range }: { range: Range }) {
         row.cacheReadTokens,
         row.cacheCreationTokens,
         row.durationMs,
+        row.ttftMs,
         row.costUSD.toFixed(6),
         row.status,
         row.stream ? 'true' : 'false',
@@ -131,6 +133,9 @@ export function Requests({ range }: { range: Range }) {
               <Th w={76} right>
                 Latency
               </Th>
+              <Th w={76} right>
+                TTFT
+              </Th>
               <Th w={80} right>
                 Cost
               </Th>
@@ -170,6 +175,9 @@ export function Requests({ range }: { range: Range }) {
                   </Cell>
                   <Cell w={76} right className="mono cell-sm muted">
                     {formatLatency(row.durationMs)}
+                  </Cell>
+                  <Cell w={76} right className="mono cell-sm muted">
+                    {formatLatency(row.ttftMs)}
                   </Cell>
                   <Cell w={80} right className="mono cell-sm muted">
                     {formatCost(row.costUSD)}

@@ -21,6 +21,10 @@ type MetricsTotals struct {
 	Errors              int64
 	AvgLatencyMs        float64
 	P95LatencyMs        int64
+	// AvgTTFTMs and P95TTFTMs cover only the requests whose time to first token
+	// was measured.
+	AvgTTFTMs float64
+	P95TTFTMs int64
 	// CostUSD is the sum of the prices providers reported; PricedRequests says
 	// how many requests carried one.
 	CostUSD        float64
@@ -64,6 +68,7 @@ type ProjectStat struct {
 	CacheReadTokens     int64
 	CacheCreationTokens int64
 	AvgLatencyMs        float64
+	AvgTTFTMs           float64
 	CostUSD             float64
 }
 
@@ -86,6 +91,7 @@ type ModelStat struct {
 	Requests     int64
 	Tokens       int64
 	AvgLatencyMs float64
+	AvgTTFTMs    float64
 	Errors       int64
 	CostUSD      float64
 }
@@ -111,6 +117,7 @@ type ProviderStat struct {
 	Requests     int64
 	Tokens       int64
 	AvgLatencyMs float64
+	AvgTTFTMs    float64
 	Errors       int64
 	CostUSD      float64
 }
@@ -129,9 +136,11 @@ type UsageRow struct {
 	CacheCreationTokens int64
 	Status              int
 	DurationMs          int64
-	Stream              bool
-	CostUSD             float64
-	HasCost             bool
+	// TTFTMs is zero when the time to first token was not measured.
+	TTFTMs  int64
+	Stream  bool
+	CostUSD float64
+	HasCost bool
 }
 
 // UsageFilter narrows the request log. Zero values mean "no filter".

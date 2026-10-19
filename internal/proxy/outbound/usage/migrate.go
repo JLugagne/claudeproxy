@@ -8,6 +8,7 @@ import "database/sql"
 var addedColumns = []struct{ name, definition string }{
 	{"cost_usd", "REAL NOT NULL DEFAULT 0"},
 	{"has_cost", "INTEGER NOT NULL DEFAULT 0"},
+	{"ttft_ms", "INTEGER"},
 }
 
 // ensureColumns brings an existing database up to the current schema.

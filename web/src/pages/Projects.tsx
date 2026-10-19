@@ -16,7 +16,7 @@ export function Projects({ range }: { range: Range }) {
   const exportCSV = () =>
     downloadCSV(
       `claudeproxy-projects-${range}.csv`,
-      ['project', 'sessions', 'requests', 'input_tokens', 'output_tokens', 'cache_hit_rate', 'avg_latency_ms', 'cost_usd'],
+      ['project', 'sessions', 'requests', 'input_tokens', 'output_tokens', 'cache_hit_rate', 'avg_latency_ms', 'avg_ttft_ms', 'cost_usd'],
       data.projects.map((row) => [
         row.name,
         row.sessions,
@@ -25,6 +25,7 @@ export function Projects({ range }: { range: Range }) {
         row.outputTokens,
         row.cacheHitRate.toFixed(4),
         Math.round(row.avgLatencyMs),
+        Math.round(row.avgTtftMs),
         row.costUSD.toFixed(6),
       ]),
     )
@@ -58,6 +59,9 @@ export function Projects({ range }: { range: Range }) {
             </Th>
             <Th w={92} right>
               Latency
+            </Th>
+            <Th w={80} right>
+              TTFT
             </Th>
             <Th w={88} right>
               Cost
@@ -97,6 +101,9 @@ export function Projects({ range }: { range: Range }) {
                   <Cell w={92} right className="mono cell-sm muted">
                     {formatLatency(row.avgLatencyMs)}
                   </Cell>
+                  <Cell w={80} right className="mono cell-sm muted">
+                    {formatLatency(row.avgTtftMs)}
+                  </Cell>
                   <Cell w={88} right className="mono cell-sm muted">
                     {formatCost(row.costUSD)}
                   </Cell>
@@ -135,6 +142,9 @@ export function Projects({ range }: { range: Range }) {
               </Cell>
               <Cell w={92} right className="mono cell-sm primary">
                 {formatLatency(totals.avgLatencyMs)}
+              </Cell>
+              <Cell w={80} right className="mono cell-sm primary">
+                {formatLatency(totals.avgTtftMs)}
               </Cell>
               <Cell w={88} right className="mono cell-sm primary">
                 {formatCost(totals.costUSD)}

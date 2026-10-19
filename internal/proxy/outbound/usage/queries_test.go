@@ -24,6 +24,7 @@ type seedRow struct {
 	cacheCreate int64
 	status      int
 	durationMs  int64
+	ttftMs      int64
 	stream      bool
 	costUSD     float64
 	hasCost     bool
@@ -41,7 +42,7 @@ func openSeedStore(t *testing.T, rows []seedRow) *Store {
 		if _, err := store.db.Exec(insertUsage,
 			row.at.UnixMilli(), row.project, row.session, row.provider, row.model, row.model,
 			row.input, row.output, row.cacheRead, row.cacheCreate,
-			row.status, row.durationMs, boolToInt(row.stream), row.costUSD, boolToInt(row.hasCost),
+			row.status, row.durationMs, nullableMs(row.ttftMs), boolToInt(row.stream), row.costUSD, boolToInt(row.hasCost),
 		); err != nil {
 			t.Fatalf("seed: %v", err)
 		}
@@ -58,7 +59,7 @@ func seedRows(now time.Time) []seedRow {
 	return []seedRow{
 		{
 			at: now.Add(-3 * time.Hour), project: "acme/gateway", session: "s1", provider: "anthropic", model: "claude-opus-4",
-			input: 100, output: 50, cacheRead: 30, cacheCreate: 10, status: 200, durationMs: 1000, stream: true,
+			input: 100, output: 50, cacheRead: 30, cacheCreate: 10, status: 200, durationMs: 1000, ttftMs: 200, stream: true,
 			costUSD: 0.10, hasCost: true,
 		},
 		{
@@ -68,7 +69,7 @@ func seedRows(now time.Time) []seedRow {
 		},
 		{
 			at: now.Add(-time.Hour), project: "acme/web", session: "s2", provider: "openrouter", model: "deepseek-v4.1-flash",
-			input: 50, output: 25, status: 429, durationMs: 500, stream: true,
+			input: 50, output: 25, status: 429, durationMs: 500, ttftMs: 400, stream: true,
 		},
 	}
 }
@@ -98,6 +99,9 @@ func TestTotalsAggregatesAndPrices(t *testing.T) {
 	}
 	if math.Abs(totals.CostUSD-0.30) > 1e-9 || totals.PricedRequests != 2 {
 		t.Errorf("cost = %v over %d priced, want 0.30 over 2", totals.CostUSD, totals.PricedRequests)
+	}
+	if totals.AvgTTFTMs != 300 || totals.P95TTFTMs != 400 {
+		t.Errorf("ttft avg/p95 = %v/%d, want 300/400 with the unmeasured request left out", totals.AvgTTFTMs, totals.P95TTFTMs)
 	}
 	if totals.P95LatencyMs == 0 {
 		t.Errorf("p95 was not computed")
@@ -152,6 +156,9 @@ func TestProjectsAndModelsRankByTokens(t *testing.T) {
 	if len(models) != 2 || models[0].Model != "claude-opus-4" {
 		t.Fatalf("models = %+v", models)
 	}
+	if models[0].AvgTTFTMs != 200 {
+		t.Errorf("opus ttft = %v, want 200", models[0].AvgTTFTMs)
+	}
 	if models[1].Errors != 1 {
 		t.Errorf("deepseek errors = %d, want 1", models[1].Errors)
 	}
@@ -191,6 +198,9 @@ func TestRequestsFiltersAndCounts(t *testing.T) {
 	if len(all) != 3 || total != 3 {
 		t.Fatalf("got %d rows / %d total, want 3/3", len(all), total)
 	}
+	if all[0].TTFTMs != 400 || all[1].TTFTMs != 0 {
+		t.Errorf("ttft = %d/%d, want 400/0", all[0].TTFTMs, all[1].TTFTMs)
+	}
 	if !all[0].Time.After(all[1].Time) {
 		t.Errorf("rows are not newest first")
 	}
@@ -229,6 +239,9 @@ func TestEnsureColumnsMigratesAnOlderDatabase(t *testing.T) {
 	if _, err := legacy.Exec("ALTER TABLE usage DROP COLUMN has_cost"); err != nil {
 		t.Fatalf("drop has_cost: %v", err)
 	}
+	if _, err := legacy.Exec("ALTER TABLE usage DROP COLUMN ttft_ms"); err != nil {
+		t.Fatalf("drop ttft_ms: %v", err)
+	}
 
 	migrated, err := Open(path, slog.New(slog.DiscardHandler))
 	if err != nil {
@@ -240,7 +253,7 @@ func TestEnsureColumnsMigratesAnOlderDatabase(t *testing.T) {
 	if err != nil {
 		t.Fatalf("columns: %v", err)
 	}
-	if !columns["cost_usd"] || !columns["has_cost"] {
+	if !columns["cost_usd"] || !columns["has_cost"] || !columns["ttft_ms"] {
 		t.Errorf("migration did not restore the columns: %v", columns)
 	}
 }
