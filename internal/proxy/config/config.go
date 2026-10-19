@@ -34,7 +34,9 @@ type Config struct {
 type Provider struct {
 	BaseURL string `yaml:"base_url"`
 	// Auth is passthrough, bearer or x-api-key.
-	Auth        string            `yaml:"auth"`
+	Auth string `yaml:"auth"`
+	// Format is the API the provider speaks: empty for the Anthropic Messages API, or openai-chat for OpenAI chat completions (requests and responses are translated).
+	Format      string            `yaml:"format"`
 	APIKey      string            `yaml:"api_key"`
 	Headers     map[string]string `yaml:"headers"`
 	DropHeaders []string          `yaml:"drop_headers"`

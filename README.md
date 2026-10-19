@@ -204,8 +204,11 @@ whether an API key is present, never its value, and there is no settings page.
 
 ## Limits
 
-- Providers must speak the Anthropic Messages API. The proxy does not
-  translate to the OpenAI format.
+- Providers speak the Anthropic Messages API, or set `format: openai-chat` to
+  be reached through a translation to OpenAI chat completions. The translation
+  covers text, images, tool calls and streaming; reasoning content and
+  `thinking` blocks are dropped, and `count_tokens` is answered locally with an
+  estimate (about 4 bytes per token).
 - `count_tokens` calls go to the routed provider. Not every provider
   implements that endpoint.
 

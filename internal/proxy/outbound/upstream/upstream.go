@@ -72,6 +72,8 @@ type Config struct {
 	// turns "/v1/messages" into "https://openrouter.ai/api/v1/messages".
 	BaseURL *url.URL
 	Auth    AuthMode
+	// Format is the API the provider speaks; empty means the Anthropic Messages API.
+	Format Format
 	// APIKey is required unless Auth is AuthPassthrough.
 	APIKey string
 	// SetHeaders are set on every request after credentials are applied.
@@ -120,6 +122,10 @@ func New(cfg Config, transport http.RoundTripper, logger *slog.Logger) (http.Han
 		ErrorHandler:   errorHandler(cfg.Name, logger),
 	}
 	handler := http.Handler(proxy)
+	if cfg.Format == FormatOpenAIChat {
+		handler = openAIChatTranslator(handler, logger)
+	}
+
 	if cfg.Auth != AuthPassthrough && !cfg.KeepClaudeMetadata {
 		handler = claudeMetadataStripper(handler)
 	}
@@ -132,6 +138,14 @@ func New(cfg Config, transport http.RoundTripper, logger *slog.Logger) (http.Han
 func validate(cfg Config) error {
 	if cfg.BaseURL == nil || cfg.BaseURL.Scheme == "" || cfg.BaseURL.Host == "" {
 		return errors.New("base_url must be an absolute URL")
+	}
+	switch cfg.Format {
+	case FormatAnthropic, FormatOpenAIChat:
+	default:
+		return fmt.Errorf("unknown format %q", cfg.Format)
+	}
+	if cfg.Format == FormatOpenAIChat && cfg.Auth == AuthPassthrough {
+		return errors.New("format openai-chat requires auth bearer or x-api-key")
 	}
 	switch cfg.Auth {
 	case AuthPassthrough:
@@ -259,3 +273,15 @@ func deleteHeaderPrefixes(header http.Header, prefixes []string) {
 		}
 	}
 }
+
+// Format is the API a provider speaks.
+type Format string
+
+const (
+	// FormatAnthropic is the Anthropic Messages API, forwarded as is. It is the
+	// default.
+	FormatAnthropic Format = ""
+	// FormatOpenAIChat is the OpenAI chat-completions API: requests and
+	// responses are translated from and to the Messages API.
+	FormatOpenAIChat Format = "openai-chat"
+)
