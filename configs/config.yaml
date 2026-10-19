@@ -8,10 +8,11 @@ server:
 
 # Request usage is recorded to SQLite, keyed by project and session, and is
 # enabled by default (opt-out). Set disabled: true to turn it off, or path to
-# choose the database file. In Docker, point path at a writable mounted volume.
-# metrics:
-#   disabled: false
-#   path: /var/lib/claudeproxy/usage.db
+# choose the database file. In Docker, point path at a writable mount (compose
+# binds ./data to /var/lib/claudeproxy).
+metrics:
+  disabled: false
+  path: /var/lib/claudeproxy/usage.db
 
 proxy:
   max_body_bytes: 67108864 # 64 MiB, Messages API bodies are buffered to read the model
@@ -29,10 +30,12 @@ proxy:
     anthropic:
       base_url: https://api.anthropic.com
       auth: passthrough
-    openrouter:
-      base_url: https://openrouter.ai/api
-      auth: bearer
-      api_key: ${OPENROUTER_API_KEY}
+    # OpenCode Go serves its Anthropic Messages models (minimax-m3,
+    # qwen3.8-max, qwen3.8-flash, qwen3.7-plus...) under /anthropic.
+    opencode-go:
+      base_url: https://opencode.ai/inference/go/anthropic
+      auth: x-api-key
+      api_key: ${OPENCODE_API_KEY}
       # Claude Code sends mid-conversation system messages (tool additions,
       # reasoning effort) that non-Claude models reject: move them to the
       # request level instead.
@@ -49,18 +52,12 @@ proxy:
   routes:
     # Divert a Claude tier: Claude Code believes it uses Haiku.
     # - match: "claude-haiku-*"
-    #   provider: openrouter
-    #   model: deepseek/deepseek-v4.1-flash
+    #   provider: opencode-go
+    #   model: qwen3.8-flash
 
     - match: "claude-*"
       provider: anthropic
 
-    # Prefix form: "or:moonshotai/kimi-k3" -> "moonshotai/kimi-k3".
-    # Must precede "*/*", which would match it first.
-    - regex: '^or:(.+)$'
-      provider: openrouter
-      model: "$1"
-
-    # OpenRouter ids such as deepseek/deepseek-v4.1-flash.
-    - match: "*/*"
-      provider: openrouter
+    # Every other model goes to OpenCode Go, e.g. "minimax-m3".
+    - match: "*"
+      provider: opencode-go

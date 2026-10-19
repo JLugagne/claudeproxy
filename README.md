@@ -6,7 +6,7 @@ It sends each request to a provider based on the model name in the request:
 - **Anthropic models** are forwarded untouched. Headers, OAuth token, body bytes
   and SSE stream all pass through as they are.
 - **Other models** are routed to an Anthropic-compatible provider such as
-  OpenRouter (`https://openrouter.ai/api`), DeepSeek or Kimi. The proxy uses its
+  OpenCode Go (`https://opencode.ai/inference/go/anthropic`). The proxy uses its
   own API key for these, and the client's Anthropic credentials are always removed.
 
 Overhead is kept low:
@@ -25,7 +25,7 @@ Overhead is kept low:
 With Docker Compose, from a clone of this repository:
 
 ```sh
-cp .env.example .env    # set OPENROUTER_API_KEY (and CLAUDEPROXY_PORT if 8787 is taken)
+cp .env.example .env    # set OPENCODE_API_KEY (and CLAUDEPROXY_PORT if 8787 is taken)
 docker compose up -d --build
 ```
 
@@ -35,7 +35,7 @@ the [docker workflow](.github/workflows/docker.yml):
 ```sh
 docker run -d --name claudeproxy --restart unless-stopped \
   -p 127.0.0.1:8787:8787 \
-  -e OPENROUTER_API_KEY=sk-or-... \
+  -e OPENCODE_API_KEY=... \
   -v "$PWD/configs/config.yaml:/etc/claudeproxy/config.yaml:ro" \
   ghcr.io/jlugagne/claudeproxy:latest
 ```
@@ -47,15 +47,15 @@ The proxy is published on `127.0.0.1` only.
 Or from source:
 
 ```sh
-export OPENROUTER_API_KEY=sk-or-...
+export OPENCODE_API_KEY=...
 go run . serve -c configs/config.yaml          # listens on 127.0.0.1:8787
 ```
 
 Check where each model goes before using it:
 
 ```sh
-go run . route -c configs/config.yaml claude-opus-5-5 deepseek/deepseek-v4.1-flash
-docker compose exec claudeproxy /claudeproxy route claude-opus-5-5 deepseek/deepseek-v4.1-flash
+go run . route -c configs/config.yaml claude-opus-5-5 qwen3.8-flash
+docker compose exec claudeproxy /claudeproxy route claude-opus-5-5 qwen3.8-flash
 ```
 
 `route` validates the configuration and prints the provider and upstream model.
@@ -92,32 +92,32 @@ Claude models keep working exactly as before, with your own login.
 ### 3. Add a subagent for another model
 
 Keep Opus as the main model and delegate work to a subagent whose `model:` is
-a provider model id. Create `~/.claude/agents/deepseek-flash.md`:
+a provider model id. Create `~/.claude/agents/qwen-flash.md`:
 
 ```markdown
 ---
-name: deepseek-flash
-description: Runs a task on deepseek/deepseek-v4.1-flash through claudeproxy. Use when the user explicitly asks for DeepSeek.
-model: deepseek/deepseek-v4.1-flash
+name: qwen-flash
+description: Runs a task on qwen3.8-flash through claudeproxy. Use when the user explicitly asks for Qwen.
+model: qwen3.8-flash
 ---
 
 Do exactly what the task asks, concisely.
 ```
 
 Restart Claude Code so it loads the agent, then ask for it by name ("run the
-deepseek-flash agent to ..."). The `*/*` route sends the request to
-OpenRouter, and `flatten_mid_conversation_updates` makes the subagent's
+qwen-flash agent to ..."). The catch-all `*` route sends the request to
+OpenCode Go, and `flatten_mid_conversation_updates` makes the subagent's
 requests acceptable to a non-Claude model (see [Configuration](#configuration)).
-Without it, OpenRouter answers `400 Invalid Anthropic Messages API request`.
+Without it, the provider may answer `400 Invalid Anthropic Messages API request`.
 
 Other ways to send work to another model:
 
 - **Name the model directly** wherever Claude Code accepts a model id, e.g.
-  `ANTHROPIC_DEFAULT_SONNET_MODEL=deepseek/deepseek-v4.1-flash`,
+  `ANTHROPIC_DEFAULT_SONNET_MODEL=qwen3.8-flash`,
   `ANTHROPIC_DEFAULT_HAIKU_MODEL=...` or `CLAUDE_CODE_SUBAGENT_MODEL=...`.
 - **Divert a Claude tier in the proxy.** Add a route such as
-  `match: "claude-haiku-*"` with `provider: openrouter` and
-  `model: deepseek/deepseek-v4.1-flash`. Claude Code is unchanged and still
+  `match: "claude-haiku-*"` with `provider: opencode-go` and
+  `model: qwen3.8-flash`. Claude Code is unchanged and still
   believes it is talking to Haiku.
 
 ### Troubleshooting
