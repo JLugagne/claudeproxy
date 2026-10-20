@@ -8,6 +8,11 @@ import (
 	"github.com/JLugagne/claudeproxy/internal/pkg/apierror"
 )
 
+// reasoningSignature is put on thinking blocks built from the provider's
+// reasoning content. The provider does not check it: Claude Code only echoes it
+// back, which is enough to round-trip the reasoning as reasoning_content.
+const reasoningSignature = "claudeproxy"
+
 type chatUsage struct {
 	PromptTokens        int64 `json:"prompt_tokens"`
 	CompletionTokens    int64 `json:"completion_tokens"`
@@ -30,8 +35,9 @@ type chatResponse struct {
 	Model   string `json:"model"`
 	Choices []struct {
 		Message struct {
-			Content   string         `json:"content"`
-			ToolCalls []chatToolCall `json:"tool_calls"`
+			Content          string         `json:"content"`
+			ReasoningContent string         `json:"reasoning_content"`
+			ToolCalls        []chatToolCall `json:"tool_calls"`
 		} `json:"message"`
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
@@ -95,7 +101,8 @@ func messageID(chatID string) string {
 }
 
 // chatToMessagesResponse converts a non-streaming chat-completions response
-// into a Messages API message. Reasoning content is dropped.
+// into a Messages API message. Reasoning content becomes a leading thinking
+// block carrying reasoningSignature.
 func chatToMessagesResponse(body []byte) ([]byte, error) {
 	var in chatResponse
 	if err := json.Unmarshal(body, &in); err != nil {
@@ -112,6 +119,11 @@ func chatToMessagesResponse(body []byte) ([]byte, error) {
 	}
 	if len(in.Choices) > 0 {
 		choice := in.Choices[0]
+		if choice.Message.ReasoningContent != "" {
+			out.Content = append(out.Content, map[string]any{
+				"type": "thinking", "thinking": choice.Message.ReasoningContent, "signature": reasoningSignature,
+			})
+		}
 		if choice.Message.Content != "" {
 			out.Content = append(out.Content, map[string]any{"type": "text", "text": choice.Message.Content})
 		}

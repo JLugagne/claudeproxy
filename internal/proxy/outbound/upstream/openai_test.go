@@ -123,7 +123,7 @@ func TestOpenAIChatTranslatesRequest(t *testing.T) {
 	  "messages": [
 	    {"role": "system", "content": "You are helpful.\n\nBe brief."},
 	    {"role": "user", "content": "Weather in Paris?"},
-	    {"role": "assistant", "content": "Checking.", "tool_calls": [{"id": "toolu_1", "type": "function", "function": {"name": "get_weather", "arguments": "{\"city\":\"Paris\"}"}}]},
+	    {"role": "assistant", "content": "Checking.", "reasoning_content": "hmm", "tool_calls": [{"id": "toolu_1", "type": "function", "function": {"name": "get_weather", "arguments": "{\"city\":\"Paris\"}"}}]},
 	    {"role": "tool", "tool_call_id": "toolu_1", "content": "Sunny"},
 	    {"role": "user", "content": "Thanks"}
 	  ]
@@ -186,7 +186,7 @@ func TestOpenAIChatTranslatesResponse(t *testing.T) {
 	delete(got, "id")
 	want := `{
 	  "type": "message", "role": "assistant", "model": "deepseek-v4.1-flash",
-	  "content": [{"type": "text", "text": "Hi"}, {"type": "tool_use", "id": "call_1", "name": "f", "input": {"a": 1}}],
+	  "content": [{"type": "thinking", "thinking": "thinking", "signature": "claudeproxy"}, {"type": "text", "text": "Hi"}, {"type": "tool_use", "id": "call_1", "name": "f", "input": {"a": 1}}],
 	  "stop_reason": "tool_use", "stop_sequence": null,
 	  "usage": {"input_tokens": 6, "output_tokens": 3, "cache_read_input_tokens": 4}
 	}`
@@ -554,4 +554,69 @@ func TestOpenAIChatDropsRegexPatternsFromToolSchemas(t *testing.T) {
 	    }
 	  }}}]
 	}`)
+}
+
+// Reasoning deltas are relayed as a signed thinking block so the client keeps
+// receiving traffic while the model thinks and can send the reasoning back.
+func TestOpenAIChatStreamsReasoningAsThinking(t *testing.T) {
+	chunks := []string{
+		`{"id":"c1","model":"deepseek-v4.1-flash","choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"Let"}}]}`,
+		`{"id":"c1","choices":[{"index":0,"delta":{"reasoning_content":" me think"}}]}`,
+		`{"id":"c1","choices":[{"index":0,"delta":{"content":"Hi"}}]}`,
+		`{"id":"c1","choices":[{"index":0,"delta":{},"finish_reason":"stop"}]}`,
+	}
+	server, _ := newOpenAIServer(t, func(w http.ResponseWriter, _ *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		for _, chunk := range chunks {
+			_, _ = io.WriteString(w, "data: "+chunk+"\n\n")
+		}
+		_, _ = io.WriteString(w, "data: [DONE]\n\n")
+	})
+	proxy := newOpenAIProxy(t, server.URL)
+
+	resp := postMessages(t, proxy.URL, "/v1/messages", `{"model":"m","max_tokens":8,"stream":true,"messages":[{"role":"user","content":"hi"}]}`, nil)
+
+	events := readSSE(t, resp.Body)
+	var names []string
+	for _, e := range events {
+		names = append(names, e.name)
+	}
+	wantNames := []string{
+		"message_start",
+		"content_block_start", "content_block_delta", "content_block_delta", "content_block_delta", "content_block_stop",
+		"content_block_start", "content_block_delta", "content_block_stop",
+		"message_delta", "message_stop",
+	}
+	if !reflect.DeepEqual(names, wantNames) {
+		t.Fatalf("events = %v\nwant     %v", names, wantNames)
+	}
+
+	thinkingStart := events[1].data
+	if thinkingStart["index"] != float64(0) {
+		t.Errorf("thinking block index = %v, want 0", thinkingStart["index"])
+	}
+	if block := thinkingStart["content_block"].(map[string]any); block["type"] != "thinking" {
+		t.Errorf("first block = %v, want a thinking block", block)
+	}
+	var thinking strings.Builder
+	for _, e := range events[2:4] {
+		delta := e.data["delta"].(map[string]any)
+		if delta["type"] != "thinking_delta" {
+			t.Fatalf("delta = %v, want thinking_delta", delta)
+		}
+		thinking.WriteString(delta["thinking"].(string))
+	}
+	if thinking.String() != "Let me think" {
+		t.Errorf("thinking = %q, want %q", thinking.String(), "Let me think")
+	}
+	if signature := events[4].data["delta"].(map[string]any); signature["type"] != "signature_delta" || signature["signature"] != "claudeproxy" {
+		t.Errorf("signature delta = %v", signature)
+	}
+
+	if textStart := events[6].data; textStart["index"] != float64(1) || textStart["content_block"].(map[string]any)["type"] != "text" {
+		t.Errorf("second block = %v, want text at index 1", textStart)
+	}
+	if delta := events[7].data["delta"].(map[string]any); delta["text"] != "Hi" {
+		t.Errorf("text delta = %v", delta)
+	}
 }

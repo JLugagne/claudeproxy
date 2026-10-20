@@ -44,6 +44,7 @@ type anthropicChoice struct {
 type anthropicBlock struct {
 	Type      string          `json:"type"`
 	Text      string          `json:"text"`
+	Thinking  string          `json:"thinking"`
 	ID        string          `json:"id"`
 	Name      string          `json:"name"`
 	Input     json.RawMessage `json:"input"`
@@ -75,10 +76,11 @@ type openAIStreamOptions struct {
 }
 
 type openAIMessage struct {
-	Role       string           `json:"role"`
-	Content    any              `json:"content,omitempty"`
-	ToolCalls  []openAIToolCall `json:"tool_calls,omitempty"`
-	ToolCallID string           `json:"tool_call_id,omitempty"`
+	Role             string           `json:"role"`
+	Content          any              `json:"content,omitempty"`
+	ReasoningContent string           `json:"reasoning_content,omitempty"`
+	ToolCalls        []openAIToolCall `json:"tool_calls,omitempty"`
+	ToolCallID       string           `json:"tool_call_id,omitempty"`
 }
 
 type openAIPart struct {
@@ -115,7 +117,8 @@ type openAIFunction struct {
 
 // messagesToChatRequest converts a Messages API request body into a
 // chat-completions request body. Fields chat completions has no equivalent
-// for (thinking, metadata, cache control, server tools...) are dropped.
+// for (the top-level thinking parameter, metadata, cache control, server
+// tools...) are dropped, but thinking content blocks are converted.
 func messagesToChatRequest(body []byte) ([]byte, bool, error) {
 	var in anthropicRequest
 	if err := json.Unmarshal(body, &in); err != nil {
@@ -226,12 +229,17 @@ func convertMessage(msg anthropicMsg) ([]openAIMessage, error) {
 }
 
 // convertAssistantBlocks folds an assistant turn into one message: text blocks
-// are joined and tool_use blocks become tool calls. Thinking blocks are dropped.
+// are joined and tool_use blocks become tool calls. Thinking blocks become the
+// reasoning_content DeepSeek's thinking mode requires to be passed back.
 func convertAssistantBlocks(blocks []anthropicBlock) openAIMessage {
 	out := openAIMessage{Role: "assistant"}
-	var texts []string
+	var texts, thinking []string
 	for _, block := range blocks {
 		switch block.Type {
+		case "thinking":
+			if block.Thinking != "" {
+				thinking = append(thinking, block.Thinking)
+			}
 		case "text":
 			if block.Text != "" {
 				texts = append(texts, block.Text)
@@ -245,6 +253,9 @@ func convertAssistantBlocks(blocks []anthropicBlock) openAIMessage {
 	}
 	if len(texts) > 0 {
 		out.Content = strings.Join(texts, "\n")
+	}
+	if len(thinking) > 0 {
+		out.ReasoningContent = strings.Join(thinking, "\n")
 	}
 	return out
 }

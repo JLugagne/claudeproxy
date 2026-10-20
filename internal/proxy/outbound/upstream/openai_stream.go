@@ -10,8 +10,9 @@ type chatChunk struct {
 	Model   string `json:"model"`
 	Choices []struct {
 		Delta struct {
-			Content   string         `json:"content"`
-			ToolCalls []chatToolCall `json:"tool_calls"`
+			Content          string         `json:"content"`
+			ReasoningContent string         `json:"reasoning_content"`
+			ToolCalls        []chatToolCall `json:"tool_calls"`
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
@@ -22,9 +23,10 @@ type chatChunk struct {
 }
 
 // streamTranslator converts a chat-completions SSE stream into the Messages
-// API event stream. Reasoning deltas are dropped. The closing message_delta is
-// held back until the stream ends because chat completions report usage in a
-// trailing chunk.
+// API event stream. Reasoning deltas are relayed as a thinking block, which also
+// keeps the client connection busy while the model thinks. The closing
+// message_delta is held back until the stream ends because chat completions
+// report usage in a trailing chunk.
 type streamTranslator struct {
 	emit       func(event string, payload map[string]any)
 	buf        []byte
@@ -88,6 +90,9 @@ func (s *streamTranslator) handleData(data []byte) {
 	}
 	s.start()
 	for _, choice := range chunk.Choices {
+		if choice.Delta.ReasoningContent != "" {
+			s.thinking(choice.Delta.ReasoningContent)
+		}
 		if choice.Delta.Content != "" {
 			s.text(choice.Delta.Content)
 		}
@@ -116,6 +121,9 @@ func (s *streamTranslator) closeBlock() {
 	if s.open < 0 {
 		return
 	}
+	if s.openKind == "thinking" {
+		s.emit("content_block_delta", map[string]any{"type": "content_block_delta", "index": s.open, "delta": map[string]any{"type": "signature_delta", "signature": reasoningSignature}})
+	}
 	s.emit("content_block_stop", map[string]any{"type": "content_block_stop", "index": s.open})
 	s.open, s.openKind = -1, ""
 }
@@ -128,6 +136,17 @@ func (s *streamTranslator) text(text string) {
 		s.emit("content_block_start", map[string]any{"type": "content_block_start", "index": s.open, "content_block": map[string]any{"type": "text", "text": ""}})
 	}
 	s.emit("content_block_delta", map[string]any{"type": "content_block_delta", "index": s.open, "delta": map[string]any{"type": "text_delta", "text": text}})
+}
+
+// thinking relays reasoning content as a thinking block, mirroring text.
+func (s *streamTranslator) thinking(text string) {
+	if s.open < 0 || s.openKind != "thinking" {
+		s.closeBlock()
+		s.open, s.openKind = s.nextBlock, "thinking"
+		s.nextBlock++
+		s.emit("content_block_start", map[string]any{"type": "content_block_start", "index": s.open, "content_block": map[string]any{"type": "thinking", "thinking": "", "signature": ""}})
+	}
+	s.emit("content_block_delta", map[string]any{"type": "content_block_delta", "index": s.open, "delta": map[string]any{"type": "thinking_delta", "thinking": text}})
 }
 
 func (s *streamTranslator) toolCall(call chatToolCall) {
