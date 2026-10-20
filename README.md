@@ -1,5 +1,8 @@
 # claudeproxy
 
+> claudeproxy is an independent project, not affiliated with, endorsed or
+> sponsored by Anthropic. Claude and Claude Code are trademarks of Anthropic, PBC.
+
 An HTTP proxy that sits between Claude Code and its providers.
 It sends each request to a provider based on the model name in the request:
 
