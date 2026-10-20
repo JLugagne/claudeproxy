@@ -268,6 +268,22 @@ func TestAttributionProjectFromWorkingDirectory(t *testing.T) {
 			body: `{"model":"claude-opus","system":"` + env + `/opt/v1.2/tool\n"}`,
 			want: "v1.2/tool",
 		},
+		"marker quoted in the conversation is not a path": {
+			body: `{"model":"claude-opus","messages":[{"role":"user","content":"(` + "`" + `Primary working directory: ...` + "`" + `), reduced to its repository"}]}`,
+			want: "unknown",
+		},
+		"quoted marker before the real one": {
+			body: `{"model":"claude-opus","messages":[{"role":"user","content":"see Primary working directory: below"}],"system":"` + env + `/home/user/src/github.com/JLugagne/libauth\n"}`,
+			want: "JLugagne/libauth",
+		},
+		"home-relative directory": {
+			body: `{"model":"claude-opus","system":"` + env + `~/work/proj\n"}`,
+			want: "work/proj",
+		},
+		"windows directory": {
+			body: `{"model":"claude-opus","system":"` + env + `C:/Users/me/src/github.com/owner/repo\n"}`,
+			want: "owner/repo",
+		},
 		"directory closing the string": {
 			body: `{"model":"claude-opus","system":"` + env + `/srv/app"}`,
 			want: "srv/app",

@@ -233,19 +233,12 @@ func projectOf(r *http.Request, body []byte) string {
 // its repository: "owner/repo" after a forge host (.../github.com/owner/repo/...),
 // else the last two segments before the first hidden directory.
 func projectFromBody(body []byte) string {
-	start := bytes.Index(body, workingDirectoryMarker)
-	if start < 0 {
+	dir, ok := workingDirectory(body)
+	if !ok {
 		return ""
 	}
-	rest := body[start+len(workingDirectoryMarker):]
-	// The body is JSON, so a newline inside the prompt appears as the two
-	// characters \n; the string itself ends at a quote.
-	end := bytes.IndexAny(rest, "\"\\\r\n")
-	if end < 0 {
-		end = len(rest)
-	}
 	var segments []string
-	for _, segment := range strings.Split(string(rest[:end]), "/") {
+	for _, segment := range strings.Split(dir, "/") {
 		if segment != "" {
 			segments = append(segments, segment)
 		}
@@ -302,4 +295,38 @@ func isForgeHost(segment string) bool {
 		}
 	}
 	return true
+}
+
+// workingDirectory returns the first absolute directory that follows the
+// marker in the body. The marker can also appear in the conversation (a quoted
+// prompt, documentation being edited), so an occurrence that is not followed by
+// a path (/..., ~/..., C:/...) is skipped.
+func workingDirectory(body []byte) (string, bool) {
+	for {
+		start := bytes.Index(body, workingDirectoryMarker)
+		if start < 0 {
+			return "", false
+		}
+		body = body[start+len(workingDirectoryMarker):]
+		// The body is JSON, so a newline inside the prompt appears as the two
+		// characters \n; the string itself ends at a quote.
+		end := bytes.IndexAny(body, "\"\\\r\n")
+		if end < 0 {
+			end = len(body)
+		}
+		if dir := string(body[:end]); isAbsolutePath(dir) {
+			return dir, true
+		}
+	}
+}
+
+func isAbsolutePath(dir string) bool {
+	switch {
+	case strings.HasPrefix(dir, "/"), strings.HasPrefix(dir, "~/"), dir == "~":
+		return true
+	case len(dir) >= 3 && dir[1] == ':' && dir[2] == '/':
+		c := dir[0] | 0x20
+		return c >= 'a' && c <= 'z'
+	}
+	return false
 }
