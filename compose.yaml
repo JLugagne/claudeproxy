@@ -6,9 +6,10 @@ services:
     ports:
       - "127.0.0.1:${CLAUDEPROXY_PORT:-8787}:8787"
     environment:
-      OPENCODE_API_KEY: ${OPENCODE_API_KEY:?set OPENCODE_API_KEY in .env or the environment}
-      # Needed by the openrouter providers of the config, once uncommented.
-      # OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:?set OPENROUTER_API_KEY in .env or the environment}
+      # Set the keys of the providers enabled in configs/config.yaml, in .env
+      # or the environment.
+      OPENCODE_API_KEY: ${OPENCODE_API_KEY:-}
+      OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
     # Run as the host user so the bind-mounted ./data stays writable and owned
     # by you. Create it first: mkdir -p data
     user: "${CLAUDEPROXY_UID:-1000}:${CLAUDEPROXY_GID:-1000}"
