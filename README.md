@@ -241,3 +241,7 @@ CI ([.github/workflows/docker.yml](.github/workflows/docker.yml)) runs vet and
 the tests, then builds the image for linux/amd64 and linux/arm64. Pushes to
 `main` publish `ghcr.io/jlugagne/claudeproxy:latest`, `v*` tags publish the
 matching semver tags, and pull requests build without pushing.
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE).
