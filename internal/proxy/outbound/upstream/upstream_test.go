@@ -468,10 +468,11 @@ func TestNonPassthroughStripsClaudeIdentity(t *testing.T) {
 	req.Header.Set("X-App", "cli")
 	req.Header.Set("X-Stainless-Lang", "js")
 	req.Header.Set("X-Anthropic-Something", "x")
+	req.Header.Set("X-Claude-Code-Session-Id", "sess-1")
 	do(t, req)
 
 	got := <-requests
-	for _, name := range []string{"X-Project", "X-App", "X-Stainless-Lang", "X-Anthropic-Something", "Anthropic-Beta", "X-Api-Key"} {
+	for _, name := range []string{"X-Project", "X-App", "X-Stainless-Lang", "X-Anthropic-Something", "X-Claude-Code-Session-Id", "Anthropic-Beta", "X-Api-Key"} {
 		if got.header.Get(name) != "" {
 			t.Errorf("header %s leaked: %q", name, got.header.Get(name))
 		}
@@ -481,6 +482,55 @@ func TestNonPassthroughStripsClaudeIdentity(t *testing.T) {
 	}
 	if got.header.Get("Anthropic-Version") != "2023-06-01" {
 		t.Errorf("protocol header dropped: %q", got.header.Get("Anthropic-Version"))
+	}
+}
+
+func TestOnlyProtocolHeadersReachThirdPartyProviders(t *testing.T) {
+	unknown := map[string]string{
+		"X-Claude-Code-Future": "id-1",
+		"Traceparent":          "00-abc-def-01",
+		"Some-Client-Header":   "value",
+	}
+	protocol := map[string]string{
+		"Accept":            "application/json",
+		"Anthropic-Version": "2023-06-01",
+		"Content-Type":      "application/json",
+		"Content-Encoding":  "identity",
+	}
+	for name, tc := range map[string]struct {
+		cfg         upstream.Config
+		wantUnknown bool
+	}{
+		"bearer drops unknown headers":    {cfg: upstream.Config{Name: "openrouter", Auth: upstream.AuthBearer, APIKey: "sk-or"}},
+		"x-api-key drops unknown headers": {cfg: upstream.Config{Name: "opencode-go", Auth: upstream.AuthAPIKey, APIKey: "sk-oc"}},
+		"passthrough keeps them":          {cfg: upstream.Config{Name: "anthropic", Auth: upstream.AuthPassthrough}, wantUnknown: true},
+	} {
+		t.Run(name, func(t *testing.T) {
+			server, requests := newCapturingServer(t)
+			tc.cfg.BaseURL = mustURL(t, server.URL)
+			proxy := newProxy(t, tc.cfg)
+
+			req := newClientRequest(t, proxy.URL)
+			for k, v := range unknown {
+				req.Header.Set(k, v)
+			}
+			for k, v := range protocol {
+				req.Header.Set(k, v)
+			}
+			do(t, req)
+
+			got := <-requests
+			for k, v := range unknown {
+				if forwarded := got.header.Get(k) == v; forwarded != tc.wantUnknown {
+					t.Errorf("header %s forwarded = %v, want %v", k, forwarded, tc.wantUnknown)
+				}
+			}
+			for k, v := range protocol {
+				if got.header.Get(k) != v {
+					t.Errorf("protocol header %s = %q, want %q", k, got.header.Get(k), v)
+				}
+			}
+		})
 	}
 }
 

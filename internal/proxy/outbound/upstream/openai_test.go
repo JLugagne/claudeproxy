@@ -152,6 +152,9 @@ func TestOpenAIChatRequestHeaders(t *testing.T) {
 	if v := got.header.Get("X-Opencode-Session"); v != "sess-1" {
 		t.Errorf("X-Opencode-Session = %q, want sess-1", v)
 	}
+	if v := got.header.Get("X-Claude-Code-Session-Id"); v != "" {
+		t.Errorf("X-Claude-Code-Session-Id = %q, want it removed", v)
+	}
 	if v := got.header.Get("Content-Type"); v != "application/json" {
 		t.Errorf("Content-Type = %q", v)
 	}

@@ -41,11 +41,11 @@ proxy:
     # Claude Code sends mid-conversation system messages (tool additions,
     # reasoning effort) that non-Claude models reject:
     # flatten_mid_conversation_updates moves them to the request level.
-    # Claude identity is stripped automatically for non-passthrough
-    # providers: Authorization/x-api-key/Cookie, User-Agent, anthropic-beta,
-    # x-stainless-* and x-anthropic-* headers, plus the body's metadata
-    # object and billing attribution block. Set keep_claude_metadata: true
-    # to keep the body's metadata and attribution.
+    # Non-passthrough providers receive only the client's protocol headers
+    # (Accept, Anthropic-Version, Content-Encoding, Content-Type); credentials
+    # and Claude Code identifiers are dropped. The body's metadata object and
+    # billing attribution block are removed too; set keep_claude_metadata: true
+    # to keep them.
     # opencode-go:
     #   base_url: https://opencode.ai/inference/go/anthropic
     #   auth: x-api-key

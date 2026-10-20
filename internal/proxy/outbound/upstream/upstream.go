@@ -15,7 +15,7 @@ import (
 	"net/http"
 	"net/http/httputil"
 	"net/url"
-	"strings"
+	"slices"
 	"time"
 
 	"github.com/JLugagne/claudeproxy/internal/pkg/apierror"
@@ -45,25 +45,12 @@ const maxLoggedErrorBytes = 4 << 10
 // ErrInvalidConfig is returned by New when the provider cannot be built.
 var ErrInvalidConfig = errors.New("invalid upstream configuration")
 
-var clientCredentialHeaders = []string{"Authorization", "X-Api-Key", "Cookie"}
-
 // proxyMetaHeaders are set by claudeproxy for its own observability. They are
 // stripped from every outbound request, Anthropic included, and never reach a
 // provider.
 var proxyMetaHeaders = []string{"X-Project"}
 
-// claudeIdentityHeaders and claudeIdentityHeaderPrefixes identify the client as
-// Claude Code. They carry no protocol meaning, so they are stripped before a
-// provider that is not Anthropic (which holds the client's own credentials) can
-// see them.
-var claudeIdentityHeaders = []string{
-	"User-Agent",
-	"X-App",
-	"Anthropic-Beta",
-	"Anthropic-Dangerous-Direct-Browser-Access",
-}
-
-var claudeIdentityHeaderPrefixes = []string{"X-Stainless-", "X-Anthropic-"}
+var forwardedClientHeaders = []string{"Accept", "Anthropic-Version", "Content-Encoding", "Content-Type"}
 
 // Config describes one provider.
 type Config struct {
@@ -106,8 +93,11 @@ func NewTransport() *http.Transport {
 }
 
 // New returns the handler forwarding to the provider. Outside passthrough mode
-// the client's credentials are always stripped, so an Anthropic token never
-// reaches a third-party provider. It returns ErrInvalidConfig.
+// only the client's protocol headers (Accept, Anthropic-Version,
+// Content-Encoding, Content-Type) are forwarded: credentials and anything
+// identifying Claude Code, including headers it adds in later versions, never
+// reach a third-party provider. The provider's own credentials and headers are
+// set afterwards. It returns ErrInvalidConfig.
 func New(cfg Config, transport http.RoundTripper, logger *slog.Logger) (http.Handler, error) {
 	if err := validate(cfg); err != nil {
 		return nil, errors.Join(ErrInvalidConfig, fmt.Errorf("provider %q", cfg.Name), err)
@@ -164,6 +154,10 @@ func validate(cfg Config) error {
 
 func rewriter(cfg Config) func(*httputil.ProxyRequest) {
 	base := *cfg.BaseURL
+	allowed := forwardedClientHeaders
+	if cfg.Format == FormatOpenAIChat {
+		allowed = append(slices.Clip(allowed), openCodeSessionHdr)
+	}
 	return func(pr *httputil.ProxyRequest) {
 		pr.SetURL(&base)
 		header := pr.Out.Header
@@ -174,31 +168,24 @@ func rewriter(cfg Config) func(*httputil.ProxyRequest) {
 		// body hides: ask the provider for an identity encoding.
 		header.Del("Accept-Encoding")
 		if cfg.Auth != AuthPassthrough {
-			for _, name := range claudeIdentityHeaders {
-				header.Del(name)
+			for name := range header {
+				if !slices.Contains(allowed, name) {
+					delete(header, name)
+				}
 			}
-			deleteHeaderPrefixes(header, claudeIdentityHeaderPrefixes)
 		}
 		for _, name := range cfg.DropHeaders {
 			header.Del(name)
 		}
 		switch cfg.Auth {
 		case AuthBearer:
-			stripCredentials(header)
 			header.Set("Authorization", "Bearer "+cfg.APIKey)
 		case AuthAPIKey:
-			stripCredentials(header)
 			header.Set("X-Api-Key", cfg.APIKey)
 		}
 		for name, value := range cfg.SetHeaders {
 			header.Set(name, value)
 		}
-	}
-}
-
-func stripCredentials(header http.Header) {
-	for _, name := range clientCredentialHeaders {
-		header.Del(name)
 	}
 }
 
@@ -264,17 +251,6 @@ func decodeForLog(head []byte, encoding string) string {
 
 func undecodable(head []byte, encoding string) string {
 	return fmt.Sprintf("<%d bytes, content-encoding %q not decoded>", len(head), encoding)
-}
-
-func deleteHeaderPrefixes(header http.Header, prefixes []string) {
-	for name := range header {
-		for _, prefix := range prefixes {
-			if strings.HasPrefix(name, prefix) {
-				header.Del(name)
-				break
-			}
-		}
-	}
 }
 
 // Format is the API a provider speaks.

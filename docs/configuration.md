@@ -90,12 +90,13 @@ Each entry of `proxy.providers` is an upstream API.
 - `passthrough` forwards the client's credentials (OAuth token or API key)
   unchanged. Use it for Anthropic only: any other provider would receive
   your Anthropic credentials.
-- `bearer` removes `Authorization`, `x-api-key` and `Cookie`, then sends
-  `Authorization: Bearer <api_key>`.
-- `x-api-key` removes the same headers, then sends `x-api-key: <api_key>`.
+- `bearer` sends `Authorization: Bearer <api_key>`.
+- `x-api-key` sends `x-api-key: <api_key>`.
 
-With `bearer` and `x-api-key`, the proxy also strips what identifies the
-client as Claude Code; see [Security and privacy](security.md#what-a-third-party-provider-receives).
+With `bearer` and `x-api-key`, only the client's protocol headers are
+forwarded; credentials and everything identifying Claude Code are dropped. A
+header the provider needs goes in `headers`. See
+[Security and privacy](security.md#what-a-third-party-provider-receives).
 
 **`flatten_mid_conversation_updates`**
 

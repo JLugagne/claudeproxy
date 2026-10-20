@@ -45,24 +45,30 @@ headers, credentials, body bytes. The proxy only:
 
 ## What a third-party provider receives
 
-With `auth: bearer` or `auth: x-api-key`, the proxy removes what identifies
-the client as Claude Code or carries your Anthropic identity:
+With `auth: bearer` or `auth: x-api-key`, headers are filtered with an
+allowlist. Of the headers Claude Code sends, the provider receives only the
+protocol ones:
 
-- `Authorization`, `x-api-key` and `Cookie`, replaced by the provider key;
-- `User-Agent`, `X-App`, `Anthropic-Beta`,
-  `Anthropic-Dangerous-Direct-Browser-Access`;
-- every `X-Stainless-*` and `X-Anthropic-*` header;
-- the body's `metadata` object and the billing attribution block Claude Code
-  adds to the system prompt, unless `keep_claude_metadata: true`.
+- `Accept`, `Anthropic-Version`, `Content-Encoding` and `Content-Type`.
+
+Everything else is dropped: `Authorization`, `x-api-key`, `Cookie`,
+`User-Agent`, `Anthropic-Beta`, `X-Stainless-*`, `X-Claude-Code-Session-Id`,
+and any header a future Claude Code version adds. The proxy then sets:
+
+- the provider key (`Authorization: Bearer ...` or `x-api-key`);
+- the provider's `headers` from the configuration;
+- `X-Opencode-Session` for `format: openai-chat` providers, see below.
+
+In the body, the proxy removes the `metadata` object and the billing
+attribution block Claude Code adds to the system prompt, unless
+`keep_claude_metadata: true`.
 
 The provider still receives the conversation itself: system prompt, messages,
 tool definitions and tool results, including file contents Claude Code read.
 Review the provider's data policy before routing work to it.
 
-The Claude Code session id is not removed: it reaches the provider in the
-`X-Claude-Code-Session-Id` header, and providers with `format: openai-chat`
-also receive it as `X-Opencode-Session`. Use `drop_headers` to remove the
-former.
+Providers with `format: openai-chat` receive the Claude Code session id as
+`X-Opencode-Session`, as OpenCode Go expects. Add `drop_headers: [X-Opencode-Session]` to a provider that should not get it.
 
 `headers` can set a different `User-Agent` for providers that require one.
 
