@@ -32,34 +32,38 @@ proxy:
     anthropic:
       base_url: https://api.anthropic.com
       auth: passthrough
+
+    # The providers below are disabled: uncomment one, its routes and set its
+    # API key to route other models through it.
+
     # OpenCode Go serves its Anthropic Messages models (minimax-m3,
     # qwen3.8-max, qwen3.8-flash, qwen3.7-plus...) under /anthropic.
-    opencode-go:
-      base_url: https://opencode.ai/inference/go/anthropic
-      auth: x-api-key
-      api_key: ${OPENCODE_API_KEY}
-      # Claude Code sends mid-conversation system messages (tool additions,
-      # reasoning effort) that non-Claude models reject: move them to the
-      # request level instead.
-      flatten_mid_conversation_updates: true
-      # Claude identity is stripped automatically for non-passthrough
-      # providers: Authorization/x-api-key/Cookie, User-Agent, anthropic-beta,
-      # x-stainless-* and x-anthropic-* headers, plus the body's metadata
-      # object and billing attribution block. Set keep_claude_metadata: true
-      # to keep the body's metadata and attribution.
+    # Claude Code sends mid-conversation system messages (tool additions,
+    # reasoning effort) that non-Claude models reject:
+    # flatten_mid_conversation_updates moves them to the request level.
+    # Claude identity is stripped automatically for non-passthrough
+    # providers: Authorization/x-api-key/Cookie, User-Agent, anthropic-beta,
+    # x-stainless-* and x-anthropic-* headers, plus the body's metadata
+    # object and billing attribution block. Set keep_claude_metadata: true
+    # to keep the body's metadata and attribution.
+    # opencode-go:
+    #   base_url: https://opencode.ai/inference/go/anthropic
+    #   auth: x-api-key
+    #   api_key: ${OPENCODE_API_KEY}
+    #   flatten_mid_conversation_updates: true
 
     # OpenCode Go serves deepseek-v4.1-flash, glm-*, kimi-*, mimo-*... on its
     # OpenAI chat-completions endpoint; the translator adds /v1/chat/completions.
     # OpenCode Go wants a distinctive User-Agent, and the session id of Claude
     # Code is forwarded as x-opencode-session.
-    opencode-go-openai:
-      base_url: https://opencode.ai/inference/go/openai
-      format: openai-chat
-      auth: bearer
-      api_key: ${OPENCODE_API_KEY}
-      flatten_mid_conversation_updates: true
-      headers:
-        User-Agent: claudeproxy/1.0
+    # opencode-go-openai:
+    #   base_url: https://opencode.ai/inference/go/openai
+    #   format: openai-chat
+    #   auth: bearer
+    #   api_key: ${OPENCODE_API_KEY}
+    #   flatten_mid_conversation_updates: true
+    #   headers:
+    #     User-Agent: claudeproxy/1.0
 
     # OpenRouter serves the Anthropic Messages API under /api (/api/v1/messages)
     # with a Bearer key, for models named by their "vendor/model" slug
@@ -101,9 +105,9 @@ proxy:
     #   model: $1
 
     # OpenCode Go models served on the OpenAI chat-completions endpoint.
-    - regex: "^(deepseek-|glm-|kimi-|longcat-|mimo-|step-|hy[0-9]|beam-|minimax-m3\\.1)"
-      provider: opencode-go-openai
+    # - regex: "^(deepseek-|glm-|kimi-|longcat-|mimo-|step-|hy[0-9]|beam-|minimax-m3\\.1)"
+    #   provider: opencode-go-openai
 
     # Every other model goes to OpenCode Go, e.g. "minimax-m3".
-    - match: "*"
-      provider: opencode-go
+    # - match: "*"
+    #   provider: opencode-go

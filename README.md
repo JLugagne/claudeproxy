@@ -25,9 +25,14 @@ Overhead is kept low:
 With Docker Compose, from a clone of this repository:
 
 ```sh
-cp .env.example .env    # set OPENCODE_API_KEY (and CLAUDEPROXY_PORT if 8787 is taken)
+cp .env.example .env    # optional: provider keys, CLAUDEPROXY_PORT, CLAUDEPROXY_CONFIG_FILE
 docker compose up -d --build
 ```
+
+Out of the box, [configs/config.yaml.example](configs/config.yaml.example)
+routes Claude models to Anthropic only. To add providers, copy it to
+`configs/config.yaml`, uncomment them and their routes, then set
+`CLAUDEPROXY_CONFIG_FILE=./configs/config.yaml` and their API keys in `.env`.
 
 Or with the prebuilt image (linux/amd64 and linux/arm64), published to GHCR by
 the [docker workflow](.github/workflows/docker.yml):
@@ -35,19 +40,19 @@ the [docker workflow](.github/workflows/docker.yml):
 ```sh
 docker run -d --name claudeproxy --restart unless-stopped \
   -p 127.0.0.1:8787:8787 \
-  -e OPENCODE_API_KEY=... \
   -v "$PWD/configs/config.yaml:/etc/claudeproxy/config.yaml:ro" \
   ghcr.io/jlugagne/claudeproxy:latest
 ```
 
-The image ships with [configs/config.yaml](configs/config.yaml); the volume is
-only needed to use your own. Restart the container after you edit the file.
+The image ships with [configs/config.yaml.example](configs/config.yaml.example);
+the volume, and the API keys of the providers it enables (`-e OPENCODE_API_KEY=...`),
+are only needed to use your own. Restart the container after you edit the file.
 The proxy is published on `127.0.0.1` only.
 
 Or from source:
 
 ```sh
-export OPENCODE_API_KEY=...
+cp configs/config.yaml.example configs/config.yaml
 go run . serve -c configs/config.yaml          # listens on 127.0.0.1:8787
 ```
 
@@ -129,7 +134,7 @@ if it is gzip, brotli or zstd compressed.
 
 ## Configuration
 
-See [configs/config.yaml](configs/config.yaml).
+See [configs/config.yaml.example](configs/config.yaml.example).
 
 **Routes**
 - Routes are evaluated in order and the first match wins.
@@ -174,7 +179,7 @@ is also committed, so a bare `go build` and `make test` work without Node.
 every other path reaches the proxy untouched.
 
 The console reads the **usage SQLite database** (metrics are on by default; see
-`metrics` in [configs/config.yaml](configs/config.yaml)). It exposes read-only
+`metrics` in [configs/config.yaml.example](configs/config.yaml.example)). It exposes read-only
 JSON under `/dashboard/api/`:
 
 | endpoint | returns |

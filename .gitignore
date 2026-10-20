@@ -10,5 +10,6 @@
 *.key
 /.claude/
 /.scaffor/
+/.design-studio/
 /data/
 /configs/config.yaml

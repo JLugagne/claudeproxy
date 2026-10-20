@@ -6,7 +6,7 @@ services:
     ports:
       - "127.0.0.1:${CLAUDEPROXY_PORT:-8787}:8787"
     environment:
-      # Set the keys of the providers enabled in configs/config.yaml, in .env
+      # Set the keys of the providers enabled in your configuration, in .env
       # or the environment.
       OPENCODE_API_KEY: ${OPENCODE_API_KEY:-}
       OPENROUTER_API_KEY: ${OPENROUTER_API_KEY:-}
@@ -14,7 +14,9 @@ services:
     # by you. Create it first: mkdir -p data
     user: "${CLAUDEPROXY_UID:-1000}:${CLAUDEPROXY_GID:-1000}"
     volumes:
-      - ./configs/config.yaml:/etc/claudeproxy/config.yaml:ro
+      # CLAUDEPROXY_CONFIG_FILE selects your configuration; the example routes
+      # Claude models to Anthropic only.
+      - ${CLAUDEPROXY_CONFIG_FILE:-./configs/config.yaml.example}:/etc/claudeproxy/config.yaml:ro
       # Usage database (metrics.path in the config), stored on the host disk.
       - ./data:/var/lib/claudeproxy
     read_only: true

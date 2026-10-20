@@ -18,7 +18,7 @@ RUN CGO_ENABLED=0 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -trimpath -ldflags=
 
 FROM gcr.io/distroless/static-debian13:nonroot
 COPY --from=builder /out/claudeproxy /claudeproxy
-COPY configs/config.yaml /etc/claudeproxy/config.yaml
+COPY configs/config.yaml.example /etc/claudeproxy/config.yaml
 ENV CLAUDEPROXY_CONFIG=/etc/claudeproxy/config.yaml
 EXPOSE 8787
 ENTRYPOINT ["/claudeproxy"]

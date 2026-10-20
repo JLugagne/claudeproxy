@@ -12,9 +12,7 @@ import (
 )
 
 func TestShippedConfigIsValid(t *testing.T) {
-	t.Setenv("OPENCODE_API_KEY", "sk-oc-test")
-
-	cfg, err := loadConfig(filepath.Join("..", "..", "configs", "config.yaml"))
+	cfg, err := loadConfig(filepath.Join("..", "..", "configs", "config.yaml.example"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -26,8 +24,8 @@ func TestShippedConfigIsValid(t *testing.T) {
 
 	for model, want := range map[string]string{
 		"claude-opus-5-5": "anthropic",
-		"minimax-m3":      "opencode-go",
-		"qwen3.8-flash":   "opencode-go",
+		"minimax-m3":      "anthropic",
+		"qwen3.8-flash":   "anthropic",
 	} {
 		decision, err := p.Routes.ResolveRoute(t.Context(), domain.Model(model))
 		if err != nil || string(decision.Provider) != want {
