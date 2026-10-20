@@ -1,4 +1,5 @@
 import type { Range } from '../api'
+import { useLiveStatus } from '../live'
 import type { Theme } from '../theme'
 
 const ranges: { value: Range; label: string }[] = [
@@ -17,6 +18,8 @@ type Props = {
 }
 
 export function PageHeader({ title, subtitle, theme, onToggleTheme, range, onRangeChange }: Props) {
+  const live = useLiveStatus()
+
   return (
     <header className="page-header">
       <div>
@@ -25,6 +28,12 @@ export function PageHeader({ title, subtitle, theme, onToggleTheme, range, onRan
       </div>
 
       <div className="page-header-right">
+        {live !== 'off' && (
+          <span className="live" data-status={live} role="status" aria-live="polite">
+            <span className="live-dot" />
+            {live === 'live' ? 'Live' : 'Connecting'}
+          </span>
+        )}
         <div className="range" role="group" aria-label="Time range">
           {ranges.map((item) => (
             <button

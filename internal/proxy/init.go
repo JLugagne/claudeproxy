@@ -31,6 +31,8 @@ type Proxy struct {
 	transport *http.Transport
 	// usage is the metrics store, nil when metrics are disabled.
 	usage *usage.Store
+	// live is the usage feed hub, nil when metrics are disabled.
+	live *app.UsageHub
 }
 
 // New wires the proxy from a resolved configuration (see config.Config.Resolve).
@@ -59,15 +61,17 @@ func New(cfg config.Config, metrics config.Metrics, logger *slog.Logger) (*Proxy
 
 	recorder := usageuc.Recorder(usageuc.Nop{})
 	var store *usage.Store
+	var hub *app.UsageHub
 	metricsErr := "usage metrics are disabled"
 	if metrics.Enabled() {
+		hub = app.NewUsageHub()
 		path, err := metrics.ResolvePath()
 		switch {
 		case err != nil:
 			metricsErr = "usage database path could not be resolved: " + err.Error()
 			logger.Warn("usage metrics disabled: cannot resolve database path", "error", err)
 		default:
-			if store, err = usage.Open(path, logger); err != nil {
+			if store, err = usage.Open(path, logger, usage.WithPublisher(hub)); err != nil {
 				metricsErr = "usage database could not be opened: " + err.Error()
 				logger.Warn("usage metrics disabled: cannot open database", "path", path, "error", err)
 				store = nil
@@ -87,6 +91,7 @@ func New(cfg config.Config, metrics config.Metrics, logger *slog.Logger) (*Proxy
 	}
 	if store != nil {
 		consoleCfg.Queries = store
+		consoleCfg.Feed = hub
 	}
 
 	application := app.New(router)
@@ -104,11 +109,22 @@ func New(cfg config.Config, metrics config.Metrics, logger *slog.Logger) (*Proxy
 		Routes:    application,
 		transport: transport,
 		usage:     store,
+		live:      hub,
 	}, nil
+}
+
+// CloseLiveFeeds ends every open dashboard events stream. Call it when the
+// HTTP server starts shutting down: server.Shutdown waits for active
+// connections, and an event stream never ends on its own.
+func (p *Proxy) CloseLiveFeeds() {
+	if p.live != nil {
+		p.live.Close()
+	}
 }
 
 // Close releases idle upstream connections; in-flight requests are unaffected.
 func (p *Proxy) Close() {
+	p.CloseLiveFeeds()
 	p.transport.CloseIdleConnections()
 	if p.usage != nil {
 		_ = p.usage.Close()

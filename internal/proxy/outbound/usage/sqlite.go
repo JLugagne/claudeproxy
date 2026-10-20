@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/JLugagne/claudeproxy/internal/proxy/domain"
+	"github.com/JLugagne/claudeproxy/internal/proxy/domain/usecases/usageuc"
 
 	_ "modernc.org/sqlite"
 )
@@ -50,18 +51,30 @@ const (
 	bufferSize    = 4096
 )
 
+// Option configures a Store at Open time.
+type Option func(*Store)
+
+// WithPublisher makes the store publish each row once the batch holding it is
+// committed, so a listener that re-queries the database sees it.
+func WithPublisher(p usageuc.Publisher) Option {
+	return func(s *Store) {
+		s.publisher = p
+	}
+}
+
 // Store persists usage in a SQLite database. Record never blocks the caller:
 // rows are buffered and written in batches by a background goroutine.
 type Store struct {
-	db     *sql.DB
-	logger *slog.Logger
-	ch     chan domain.Usage
-	done   chan struct{}
+	db        *sql.DB
+	logger    *slog.Logger
+	ch        chan domain.Usage
+	done      chan struct{}
+	publisher usageuc.Publisher
 }
 
 // Open opens the database at path, creating it if needed, and applies the
 // schema. Callers must Close it to flush pending records.
-func Open(path string, logger *slog.Logger) (*Store, error) {
+func Open(path string, logger *slog.Logger, opts ...Option) (*Store, error) {
 	if dir := filepath.Dir(path); dir != "" && dir != "." {
 		if err := os.MkdirAll(dir, 0o750); err != nil {
 			return nil, err
@@ -85,6 +98,9 @@ func Open(path string, logger *slog.Logger) (*Store, error) {
 		return nil, err
 	}
 	s := &Store{db: db, logger: logger, ch: make(chan domain.Usage, bufferSize), done: make(chan struct{})}
+	for _, opt := range opts {
+		opt(s)
+	}
 	go s.run()
 	return s, nil
 }
@@ -138,6 +154,7 @@ func (s *Store) flush(batch []domain.Usage) {
 		s.logger.Warn("usage prepare failed", "error", err)
 		return
 	}
+	inserted := make([]domain.Usage, 0, len(batch))
 	for _, u := range batch {
 		if _, err := stmt.Exec(
 			u.Time.UnixMilli(),
@@ -158,11 +175,21 @@ func (s *Store) flush(batch []domain.Usage) {
 			boolToInt(u.HasCost),
 		); err != nil {
 			s.logger.Warn("usage insert failed", "error", err)
+			continue
 		}
+		inserted = append(inserted, u)
 	}
 	_ = stmt.Close()
 	if err := tx.Commit(); err != nil {
 		s.logger.Warn("usage commit failed", "error", err)
+		return
+	}
+	// Publish only after the commit: a listener that re-queries the database
+	// already sees the rows. Nothing is published if any step above failed.
+	if s.publisher != nil {
+		for _, u := range inserted {
+			s.publisher.Publish(u)
+		}
 	}
 }
 

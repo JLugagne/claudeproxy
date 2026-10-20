@@ -3,7 +3,8 @@
 The proxy serves a usage console at <http://127.0.0.1:8787/dashboard>. It is a
 React app embedded in the binary, with six pages: Overview, Projects, Models,
 Requests, Sessions and Providers. It has a dark and a light theme, a 24h / 7d /
-30d range selector and CSV export.
+30d range selector and CSV export. Pages refresh live as requests are recorded,
+and the header shows a Live indicator while the event stream is connected.
 
 - [What is recorded](#what-is-recorded)
 - [Project and session attribution](#project-and-session-attribution)
@@ -69,6 +70,22 @@ The console reads read-only JSON under `/dashboard/api/`:
 
 `range` is `24h` (default), `7d` or `30d`; chart buckets are hourly for 24h
 and daily otherwise.
+
+The console also listens to `GET /dashboard/api/events`, a Server-Sent Events
+stream:
+
+- it opens with a `: connected` comment and sends a `: ping` heartbeat comment
+  every 25 seconds;
+- each recorded request arrives as a `request` event whose `data` is a JSON
+  object with the same fields as a `/dashboard/api/requests` row;
+- events are not buffered: they are published only to connected listeners and
+  dropped when nobody listens, and a slow listener drops events rather than
+  slowing the proxy;
+- the stream answers `404` when live events are unavailable.
+
+The console refetches its data on each event, throttled to one refetch every
+2 seconds, and after a reconnect (the browser reopens the stream itself; events
+emitted while it was down are lost).
 
 The configuration is never exposed: the providers endpoint reports only
 whether an API key is present, never its value, and there is no settings

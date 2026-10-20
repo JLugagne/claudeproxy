@@ -63,6 +63,7 @@ var serveCmd = &cobra.Command{
 			IdleTimeout:       cfg.Server.IdleTimeout,
 			ErrorLog:          slog.NewLogLogger(logger.Handler(), slog.LevelWarn),
 		}
+		server.RegisterOnShutdown(p.CloseLiveFeeds)
 		served := make(chan error, 1)
 		go func() { served <- server.Serve(listener) }()
 		logger.Info("claudeproxy listening", "addr", listener.Addr().String(), "config", configPath)

@@ -10,6 +10,21 @@ type Recorder interface {
 	Record(usage domain.Usage)
 }
 
+// Publisher receives each usage once it is persisted. Implementations must not
+// block the caller. Events published while nobody is subscribed are dropped:
+// the feed is live-only, with no buffering and no backlog.
+type Publisher interface {
+	Publish(usage domain.Usage)
+}
+
+// Feed lets the console follow usage live. Subscribe returns a channel of usages
+// and a cancel function that unsubscribes; cancel is safe to call more than
+// once. The channel is closed when the feed shuts down. Events published while
+// nobody is subscribed are dropped.
+type Feed interface {
+	Subscribe() (events <-chan domain.Usage, cancel func())
+}
+
 // Nop is a Recorder that discards everything, used when metrics are disabled.
 type Nop struct{}
 

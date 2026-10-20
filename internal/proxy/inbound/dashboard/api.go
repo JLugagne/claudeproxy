@@ -33,8 +33,11 @@ type RouteInfo struct {
 // proxy configuration. Queries is nil when metrics are disabled or the
 // database could not be opened, and MetricsError then explains why.
 type Config struct {
-	Queries         usageuc.MetricsQueries
-	MetricsError    string
+	Queries      usageuc.MetricsQueries
+	MetricsError string
+	// Feed is the live usage feed. It is nil when metrics are disabled; the
+	// events endpoint then answers 404.
+	Feed            usageuc.Feed
 	Providers       []ProviderInfo
 	Routes          []RouteInfo
 	DefaultProvider string
@@ -77,6 +80,8 @@ func (h *handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 		h.requests(w, r)
 	case "sessions":
 		h.sessions(w, r)
+	case "events":
+		h.events(w, r)
 	case "providers":
 		h.providers(w, r)
 	default:
