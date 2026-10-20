@@ -37,8 +37,14 @@ The **project** of a request is, in order:
 1. the `X-Project` request header, when the client sends one (see
    [the `SessionStart` hook](installation.md#the-sessionstart-hook));
 2. the working directory Claude Code reports in its prompt
-   (`Primary working directory: ...`), reduced to its last two segments:
-   `~/src/github.com/owner/repo` becomes `owner/repo`;
+   (`Primary working directory: ...`), reduced to its repository so that a
+   subdirectory or a worktree counts as the same project:
+   - after a forge host, the next two segments:
+     `~/src/github.com/owner/repo/internal` and
+     `~/src/github.com/owner/repo/.claude/worktrees/x` both become
+     `owner/repo`;
+   - otherwise the last two segments before the first hidden directory:
+     `~/work/proj/.claude/worktrees/x` becomes `work/proj`;
 3. `unknown`.
 
 The **session** is the Claude Code session id carried in the request's

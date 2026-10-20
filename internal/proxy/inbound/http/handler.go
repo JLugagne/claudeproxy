@@ -226,9 +226,12 @@ func projectOf(r *http.Request, body []byte) string {
 	return projectFromBody(body)
 }
 
-// projectFromBody returns the last two segments of the working directory found
-// in the body ("owner/repo" for a checkout such as .../github.com/owner/repo),
-// or an empty string when the body does not carry one.
+// projectFromBody names the project of the working directory found in the
+// body, or returns an empty string when the body does not carry one. Claude
+// Code often runs below the repository root (a subdirectory, a worktree under
+// a hidden directory such as .claude/worktrees), so the directory is reduced to
+// its repository: "owner/repo" after a forge host (.../github.com/owner/repo/...),
+// else the last two segments before the first hidden directory.
 func projectFromBody(body []byte) string {
 	start := bytes.Index(body, workingDirectoryMarker)
 	if start < 0 {
@@ -247,6 +250,17 @@ func projectFromBody(body []byte) string {
 			segments = append(segments, segment)
 		}
 	}
+	for i, segment := range segments {
+		if isForgeHost(segment) && len(segments) > i+2 {
+			return segments[i+1] + "/" + segments[i+2]
+		}
+	}
+	for i, segment := range segments {
+		if strings.HasPrefix(segment, ".") {
+			segments = segments[:i]
+			break
+		}
+	}
 	if len(segments) > 2 {
 		segments = segments[len(segments)-2:]
 	}
@@ -258,4 +272,34 @@ func projectFromBody(body []byte) string {
 // model listings...) are proxied and logged but not counted as usage.
 func isModelCall(r *http.Request) bool {
 	return r.Method == http.MethodPost && strings.HasPrefix(r.URL.Path, routedPathPrefix)
+}
+
+// isForgeHost reports whether a path segment is a host name such as github.com
+// or git.example.org: lowercase dot-separated labels ending with an alphabetic
+// top-level domain, so a version directory like v1.2 is not mistaken for one.
+func isForgeHost(segment string) bool {
+	labels := strings.Split(segment, ".")
+	if len(labels) < 2 {
+		return false
+	}
+	for _, label := range labels {
+		if label == "" {
+			return false
+		}
+		for _, c := range label {
+			if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
+				return false
+			}
+		}
+	}
+	tld := labels[len(labels)-1]
+	if len(tld) < 2 {
+		return false
+	}
+	for _, c := range tld {
+		if c < 'a' || c > 'z' {
+			return false
+		}
+	}
+	return true
 }

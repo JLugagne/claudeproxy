@@ -248,6 +248,26 @@ func TestAttributionProjectFromWorkingDirectory(t *testing.T) {
 			body: `{"model":"claude-opus","system":[{"type":"text","text":"` + env + `/home/user/src/github.com/JLugagne/claudeproxy\n - Is a git repository: true"}]}`,
 			want: "JLugagne/claudeproxy",
 		},
+		"subdirectory of a forge checkout": {
+			body: `{"model":"claude-opus","system":"` + env + `/home/user/src/github.com/JLugagne/libauth/internal/domain\n"}`,
+			want: "JLugagne/libauth",
+		},
+		"worktree inside a forge checkout": {
+			body: `{"model":"claude-opus","system":"` + env + `/home/user/src/github.com/JLugagne/libauth/.security-audit/2026-10-20-2322/wt-tokens-jwt-keys\n"}`,
+			want: "JLugagne/libauth",
+		},
+		"self-hosted forge": {
+			body: `{"model":"claude-opus","system":"` + env + `/code/git.example.org/team/service/cmd\n"}`,
+			want: "team/service",
+		},
+		"hidden directory ends the project": {
+			body: `{"model":"claude-opus","system":"` + env + `/work/proj/.claude/worktrees/feature\n"}`,
+			want: "work/proj",
+		},
+		"version-like segment is not a forge": {
+			body: `{"model":"claude-opus","system":"` + env + `/opt/v1.2/tool\n"}`,
+			want: "v1.2/tool",
+		},
 		"directory closing the string": {
 			body: `{"model":"claude-opus","system":"` + env + `/srv/app"}`,
 			want: "srv/app",
