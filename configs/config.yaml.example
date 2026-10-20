@@ -61,6 +61,25 @@ proxy:
       headers:
         User-Agent: claudeproxy/1.0
 
+    # OpenRouter serves the Anthropic Messages API under /api (/api/v1/messages)
+    # with a Bearer key, for models named by their "vendor/model" slug
+    # (anthropic/claude-opus-5, deepseek/deepseek-v4.1-flash, openrouter/auto...).
+    # openrouter:
+    #   base_url: https://openrouter.ai/api
+    #   auth: bearer
+    #   api_key: ${OPENROUTER_API_KEY}
+    #   flatten_mid_conversation_updates: true
+
+    # Same models on OpenRouter's OpenAI chat-completions endpoint, for models
+    # whose Anthropic translation falls short; the translator adds
+    # /v1/chat/completions.
+    # openrouter-openai:
+    #   base_url: https://openrouter.ai/api
+    #   format: openai-chat
+    #   auth: bearer
+    #   api_key: ${OPENROUTER_API_KEY}
+    #   flatten_mid_conversation_updates: true
+
   # First match wins. "match" is a glob ('*' spans '/', '?' is one char),
   # "regex" is RE2. "model" renames the model upstream; $1, $2... refer to
   # the wildcards / capture groups.
@@ -72,6 +91,14 @@ proxy:
 
     - match: "claude-*"
       provider: anthropic
+
+    # OpenRouter, selected with an "openrouter/" prefix that is stripped
+    # upstream: "openrouter/deepseek/deepseek-v4.1-flash" is sent as
+    # "deepseek/deepseek-v4.1-flash" (and "openrouter/openrouter/auto" as
+    # "openrouter/auto").
+    # - match: "openrouter/*"
+    #   provider: openrouter
+    #   model: $1
 
     # OpenCode Go models served on the OpenAI chat-completions endpoint.
     - regex: "^(deepseek-|glm-|kimi-|longcat-|mimo-|step-|hy[0-9]|beam-|minimax-m3\\.1)"
