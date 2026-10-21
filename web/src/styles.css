@@ -954,3 +954,111 @@ a {
     overflow-x: auto;
   }
 }
+
+/* ---- quota ------------------------------------------------------------- */
+
+.meters {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-bottom: 10px;
+  margin-bottom: 4px;
+  border-bottom: 1px solid var(--color-border);
+}
+
+.meter {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.meter-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.meter-label {
+  font-size: var(--text-xs);
+  color: var(--color-text-muted);
+}
+
+.meter-value {
+  font-family: var(--font-mono);
+  font-size: var(--text-xs);
+  color: var(--color-text-primary);
+}
+
+.meter-value--lg {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.meter-sub {
+  font-size: var(--text-xs);
+  color: var(--color-text-faint);
+}
+
+.meter-track {
+  height: 6px;
+  border-radius: var(--radius-pill);
+  background: var(--color-bg-inset);
+  overflow: hidden;
+}
+
+.meter-fill {
+  height: 100%;
+  border-radius: var(--radius-pill);
+  min-width: 2px;
+  transition: width 0.3s ease;
+}
+
+.meter-fill--ok {
+  background: var(--color-success);
+}
+
+.meter-fill--warn {
+  background: var(--color-warning);
+}
+
+.meter-fill--high {
+  background: var(--color-danger);
+}
+
+.meter-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.meter-grid .meter-value {
+  font-size: 22px;
+  font-weight: 600;
+}
+
+.meter-grid .meter-label {
+  font-size: var(--text-sm, 13px);
+}
+
+.meter-grid .meter-track {
+  height: 10px;
+}
+
+.plot--lines {
+  display: block;
+}
+
+.plot--lines .lines {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  z-index: 1;
+}
+
+@media (max-width: 900px) {
+  .meter-grid {
+    grid-template-columns: 1fr;
+  }
+}

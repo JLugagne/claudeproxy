@@ -80,6 +80,8 @@ func (h *handler) serveAPI(w http.ResponseWriter, r *http.Request) {
 		h.requests(w, r)
 	case "sessions":
 		h.sessions(w, r)
+	case "quota":
+		h.quota(w, r)
 	case "events":
 		h.events(w, r)
 	case "providers":
@@ -253,6 +255,33 @@ func (h *handler) sessions(w http.ResponseWriter, r *http.Request) {
 		Totals:   newTotals(totals),
 		Sessions: newSessions(sessions),
 	})
+}
+
+// maxQuotaPoints bounds the utilization series sent to the chart.
+const maxQuotaPoints = 300
+
+func (h *handler) quota(w http.ResponseWriter, r *http.Request) {
+	window, name, err := parseRange(r.URL.Query().Get("range"), h.cfg.now())
+	if err != nil {
+		writeJSON(w, http.StatusBadRequest, errorDTO{Error: err.Error()})
+		return
+	}
+	snapshots, err := h.cfg.Queries.RateLimits(r.Context(), window)
+	if err != nil {
+		writeServerError(w, err)
+		return
+	}
+
+	response := quotaResponse{
+		Range:    name,
+		Series:   newQuotaSeries(domain.DownsampleQuota(snapshots, maxQuotaPoints)),
+		Projects: newQuotaShares(domain.AttributeQuota(snapshots, domain.QuotaByProject)),
+		Sessions: newQuotaShares(domain.AttributeQuota(snapshots, domain.QuotaBySession)),
+	}
+	if len(snapshots) > 0 {
+		response.Current = newQuotaCurrent(snapshots[len(snapshots)-1])
+	}
+	writeJSON(w, http.StatusOK, response)
 }
 
 func (h *handler) providers(w http.ResponseWriter, r *http.Request) {
@@ -487,6 +516,82 @@ type providersResponse struct {
 	DefaultProvider string        `json:"defaultProvider"`
 	Providers       []providerDTO `json:"providers"`
 	Routes          []routeDTO    `json:"routes"`
+}
+
+type quotaWindowDTO struct {
+	Utilization float64    `json:"utilization"`
+	ResetsAt    *time.Time `json:"resetsAt"`
+	Status      string     `json:"status"`
+	Present     bool       `json:"present"`
+}
+
+type quotaCurrentDTO struct {
+	Time     time.Time      `json:"time"`
+	FiveHour quotaWindowDTO `json:"fiveHour"`
+	SevenDay quotaWindowDTO `json:"sevenDay"`
+	Claim    string         `json:"claim"`
+}
+
+type quotaPointDTO struct {
+	Time     time.Time `json:"time"`
+	FiveHour *float64  `json:"fiveHour"`
+	SevenDay *float64  `json:"sevenDay"`
+}
+
+type quotaShareDTO struct {
+	Name     string  `json:"name"`
+	Project  string  `json:"project,omitempty"`
+	FiveHour float64 `json:"fiveHour"`
+	SevenDay float64 `json:"sevenDay"`
+}
+
+type quotaResponse struct {
+	Range    string           `json:"range"`
+	Current  *quotaCurrentDTO `json:"current"`
+	Series   []quotaPointDTO  `json:"series"`
+	Projects []quotaShareDTO  `json:"projects"`
+	Sessions []quotaShareDTO  `json:"sessions"`
+}
+
+func newQuotaWindow(window domain.QuotaWindow) quotaWindowDTO {
+	dto := quotaWindowDTO{Utilization: window.Utilization, Status: window.Status, Present: window.Present}
+	if !window.ResetsAt.IsZero() {
+		resetsAt := window.ResetsAt
+		dto.ResetsAt = &resetsAt
+	}
+	return dto
+}
+
+func newQuotaCurrent(snapshot domain.RateLimitSnapshot) *quotaCurrentDTO {
+	return &quotaCurrentDTO{
+		Time:     snapshot.Time,
+		FiveHour: newQuotaWindow(snapshot.FiveHour),
+		SevenDay: newQuotaWindow(snapshot.SevenDay),
+		Claim:    snapshot.Claim,
+	}
+}
+
+func newQuotaSeries(snapshots []domain.RateLimitSnapshot) []quotaPointDTO {
+	out := make([]quotaPointDTO, 0, len(snapshots))
+	for _, snapshot := range snapshots {
+		point := quotaPointDTO{Time: snapshot.Time}
+		if snapshot.FiveHour.Present {
+			point.FiveHour = &snapshot.FiveHour.Utilization
+		}
+		if snapshot.SevenDay.Present {
+			point.SevenDay = &snapshot.SevenDay.Utilization
+		}
+		out = append(out, point)
+	}
+	return out
+}
+
+func newQuotaShares(shares []domain.QuotaShare) []quotaShareDTO {
+	out := make([]quotaShareDTO, 0, len(shares))
+	for _, share := range shares {
+		out = append(out, quotaShareDTO{Name: share.Name, Project: share.Project, FiveHour: share.FiveHour, SevenDay: share.SevenDay})
+	}
+	return out
 }
 
 func newTotals(t domain.MetricsTotals) totalsDTO {

@@ -7,6 +7,7 @@ import { Models } from './pages/Models'
 import { Overview } from './pages/Overview'
 import { Projects } from './pages/Projects'
 import { Providers } from './pages/Providers'
+import { Quota } from './pages/Quota'
 import { Requests } from './pages/Requests'
 import { Sessions } from './pages/Sessions'
 import type { Page } from './router'
@@ -19,6 +20,7 @@ const pages: Record<Page, (props: { range: Range }) => ReactElement> = {
   models: Models,
   requests: Requests,
   sessions: Sessions,
+  quota: Quota,
   providers: Providers,
 }
 

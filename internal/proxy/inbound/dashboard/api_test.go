@@ -21,6 +21,7 @@ type fakeQueries struct {
 	providers []domain.ProviderStat
 	rows      []domain.UsageRow
 	total     int64
+	snapshots []domain.RateLimitSnapshot
 
 	lastRange  domain.MetricsRange
 	lastFilter domain.UsageFilter
@@ -55,6 +56,11 @@ func (f *fakeQueries) Requests(_ context.Context, r domain.MetricsRange, filter 
 	f.lastRange = r
 	f.lastFilter = filter
 	return f.rows, f.total, nil
+}
+
+func (f *fakeQueries) RateLimits(_ context.Context, r domain.MetricsRange) ([]domain.RateLimitSnapshot, error) {
+	f.lastRange = r
+	return f.snapshots, nil
 }
 
 func fixedNow() time.Time {
@@ -207,4 +213,72 @@ func TestAPIProvidersMergesConfigWithUsage(t *testing.T) {
 	if body.DefaultProvider != "anthropic" {
 		t.Errorf("default provider = %q", body.DefaultProvider)
 	}
+}
+
+func TestAPIQuotaReportsCurrentSeriesAndShares(t *testing.T) {
+	at := func(minutes int) time.Time { return fixedNow().Add(time.Duration(minutes-60) * time.Minute) }
+	window := func(utilization float64, resetMinutes int) domain.QuotaWindow {
+		return domain.QuotaWindow{Utilization: utilization, ResetsAt: at(resetMinutes), Status: "allowed", Present: true}
+	}
+	queries := &fakeQueries{snapshots: []domain.RateLimitSnapshot{
+		{Time: at(0), Attribution: domain.Attribution{Project: "acme/gateway", Session: "s1"}, FiveHour: window(0.10, 200), SevenDay: window(0.20, 5000)},
+		{Time: at(30), Attribution: domain.Attribution{Project: "acme/gateway", Session: "s1"}, FiveHour: window(0.15, 200), SevenDay: window(0.22, 5000), Claim: "five_hour"},
+	}}
+	handler := NewHandler(Config{Queries: queries, Now: fixedNow})
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, Prefix+"/api/quota?range=24h", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (%s)", rec.Code, rec.Body.String())
+	}
+	var body quotaResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Current == nil || body.Current.FiveHour.Utilization != 0.15 || body.Current.SevenDay.Utilization != 0.22 || body.Current.Claim != "five_hour" {
+		t.Fatalf("current = %+v", body.Current)
+	}
+	if body.Current.FiveHour.ResetsAt == nil || !body.Current.FiveHour.ResetsAt.Equal(at(200)) {
+		t.Errorf("five hour reset = %v, want %v", body.Current.FiveHour.ResetsAt, at(200))
+	}
+	if len(body.Series) != 2 {
+		t.Errorf("series = %+v, want 2 points", body.Series)
+	}
+	if len(body.Projects) != 1 || body.Projects[0].Name != "acme/gateway" || math.Abs(body.Projects[0].SevenDay-0.02) > 1e-9 {
+		t.Errorf("projects = %+v", body.Projects)
+	}
+	if len(body.Sessions) != 1 || body.Sessions[0].Name != "s1" || body.Sessions[0].Project != "acme/gateway" {
+		t.Errorf("sessions = %+v", body.Sessions)
+	}
+}
+
+func TestAPIQuotaIsEmptyWithoutSnapshots(t *testing.T) {
+	handler := NewHandler(Config{Queries: &fakeQueries{}, Now: fixedNow})
+
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, httptest.NewRequest(http.MethodGet, Prefix+"/api/quota", nil))
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200", rec.Code)
+	}
+	var body quotaResponse
+	if err := json.Unmarshal(rec.Body.Bytes(), &body); err != nil {
+		t.Fatalf("decode: %v", err)
+	}
+	if body.Current != nil || len(body.Series) != 0 {
+		t.Errorf("body = %+v, want no current and no series", body)
+	}
+	if !json.Valid(rec.Body.Bytes()) || !contains(rec.Body.String(), `"series":[]`) {
+		t.Errorf("series must encode as an empty array: %s", rec.Body.String())
+	}
+}
+
+func contains(s, sub string) bool {
+	for i := 0; i+len(sub) <= len(s); i++ {
+		if s[i:i+len(sub)] == sub {
+			return true
+		}
+	}
+	return false
 }

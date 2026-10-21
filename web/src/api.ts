@@ -145,6 +145,41 @@ export type ProvidersResponse = {
   routes: Route[]
 }
 
+export type QuotaWindow = {
+  utilization: number
+  resetsAt: string | null
+  status: string
+  present: boolean
+}
+
+export type QuotaCurrent = {
+  time: string
+  fiveHour: QuotaWindow
+  sevenDay: QuotaWindow
+  claim: string
+}
+
+export type QuotaPoint = {
+  time: string
+  fiveHour: number | null
+  sevenDay: number | null
+}
+
+export type QuotaShare = {
+  name: string
+  project?: string
+  fiveHour: number
+  sevenDay: number
+}
+
+export type QuotaResponse = {
+  range: Range
+  current: QuotaCurrent | null
+  series: QuotaPoint[]
+  projects: QuotaShare[]
+  sessions: QuotaShare[]
+}
+
 export async function apiGet<T>(path: string, signal?: AbortSignal): Promise<T> {
   const response = await fetch(`/dashboard/api${path}`, {
     signal,

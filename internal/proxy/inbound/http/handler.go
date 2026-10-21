@@ -208,6 +208,7 @@ func (h *Handler) finish(r *http.Request, decision domain.Decision, recorder *us
 		Stream:                   recorder.streaming(),
 		CostUSD:                  costValue(cost),
 		HasCost:                  cost != nil,
+		RateLimits:               rateLimitHeaders(recorder.Header()),
 	})
 }
 

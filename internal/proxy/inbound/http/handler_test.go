@@ -410,3 +410,35 @@ func TestHandlerSkipsTimeToFirstTokenOnErrors(t *testing.T) {
 		t.Fatalf("ttft = %v on an error response, want 0", got[0].TimeToFirstToken)
 	}
 }
+
+func TestHandlerRecordsRateLimitHeaders(t *testing.T) {
+	upstreams := map[domain.ProviderName]http.Handler{"anthropic": http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Anthropic-Ratelimit-Unified-5h-Utilization", "0.42")
+		w.Header().Set("Anthropic-Ratelimit-Unified-7d-Reset", "1790000000")
+		w.Header().Set("X-Other", "ignored")
+		w.WriteHeader(http.StatusOK)
+		_, _ = io.WriteString(w, `{"usage":{"input_tokens":1,"output_tokens":2}}`)
+	})}
+	routes := staticRoutes(t, "claude-opus", domain.Decision{Provider: "anthropic", Model: "claude-opus", Requested: "claude-opus"})
+	recorder := &usageuctest.MockRecorder{}
+	handler := inboundhttp.NewHandler(routes, upstreams, 1<<20, slog.New(slog.DiscardHandler), inboundhttp.WithUsage(recorder))
+
+	serve(handler, httptest.NewRequest(http.MethodPost, "/v1/messages", strings.NewReader(`{"model":"claude-opus"}`)))
+
+	got := recorder.Recorded()
+	if len(got) != 1 {
+		t.Fatalf("recorded %d usages, want 1", len(got))
+	}
+	want := map[string]string{
+		"anthropic-ratelimit-unified-5h-utilization": "0.42",
+		"anthropic-ratelimit-unified-7d-reset":       "1790000000",
+	}
+	if len(got[0].RateLimits) != len(want) {
+		t.Fatalf("rate limits %v, want %v", got[0].RateLimits, want)
+	}
+	for name, value := range want {
+		if got[0].RateLimits[name] != value {
+			t.Fatalf("rate limits %v, want %v", got[0].RateLimits, want)
+		}
+	}
+}

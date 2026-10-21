@@ -1,4 +1,4 @@
-import type { Point, Range } from '../api'
+import type { Point, QuotaPoint, Range } from '../api'
 import { formatBucketLabel, formatCompact, niceMax } from '../format'
 
 export function VolumeChart({ points, range }: { points: Point[]; range: Range }) {
@@ -100,6 +100,86 @@ export function Legend() {
         <span className="legend-swatch" style={{ background: 'var(--color-chart-2)' }} />
         Output
       </span>
+    </div>
+  )
+}
+
+const QUOTA_SERIES = [
+  { key: 'fiveHour', label: '5-hour window', color: 'var(--color-chart-1)' },
+  { key: 'sevenDay', label: 'Weekly window', color: 'var(--color-chart-2)' },
+] as const
+
+const RANGE_MS: Record<Range, number> = { '24h': 86_400_000, '7d': 7 * 86_400_000, '30d': 30 * 86_400_000 }
+
+export function QuotaLegend() {
+  return (
+    <div className="legend">
+      {QUOTA_SERIES.map((series) => (
+        <span className="legend-item" key={series.key}>
+          <span className="legend-swatch" style={{ background: series.color }} />
+          {series.label}
+        </span>
+      ))}
+    </div>
+  )
+}
+
+/** Utilization of both windows over the range, on a fixed 0–100% axis. */
+export function QuotaChart({ points, range }: { points: QuotaPoint[]; range: Range }) {
+  const end = points.length > 0 ? new Date(points[points.length - 1].time).getTime() : 0
+  const start = end - RANGE_MS[range]
+  const x = (time: string) => Math.min(100, Math.max(0, ((new Date(time).getTime() - start) / (end - start)) * 100))
+  const ticks = [1, 0.75, 0.5, 0.25, 0]
+
+  const path = (key: 'fiveHour' | 'sevenDay') => {
+    let d = ''
+    for (const point of points) {
+      const value = point[key]
+      if (value === null) continue
+      d += `${d === '' ? 'M' : 'L'}${x(point.time).toFixed(2)},${((1 - Math.min(1, value)) * 100).toFixed(2)} `
+    }
+    return d
+  }
+
+  const labels = [0, 0.25, 0.5, 0.75, 1].map((fraction) => ({
+    fraction,
+    time: new Date(start + fraction * RANGE_MS[range]).toISOString(),
+  }))
+
+  return (
+    <div className="chart">
+      <div className="yaxis" aria-hidden="true">
+        {ticks.map((tick) => (
+          <span key={tick}>{Math.round(tick * 100)}%</span>
+        ))}
+      </div>
+      <div style={{ flex: 1, minWidth: 0 }}>
+        <div className="plot plot--lines">
+          <div className="grid-line" style={{ top: '25%' }} />
+          <div className="grid-line" style={{ top: '50%' }} />
+          <div className="grid-line" style={{ top: '75%' }} />
+          <svg className="lines" viewBox="0 0 100 100" preserveAspectRatio="none" role="img" aria-label="Quota utilization over time">
+            {QUOTA_SERIES.map((series) => (
+              <path
+                key={series.key}
+                d={path(series.key)}
+                fill="none"
+                stroke={series.color}
+                strokeWidth={2}
+                strokeLinejoin="round"
+                vectorEffect="non-scaling-stroke"
+              />
+            ))}
+          </svg>
+        </div>
+        <div className="xaxis">
+          {labels.map((label) => (
+            <span key={label.fraction} style={{ left: `${label.fraction * 100}%` }}>
+              {formatBucketLabel(label.time, range)}
+            </span>
+          ))}
+        </div>
+      </div>
     </div>
   )
 }

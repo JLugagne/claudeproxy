@@ -54,6 +54,25 @@ export function formatTime(iso: string): string {
   return new Date(iso).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' })
 }
 
+/** A window's utilization, zero once its reset time has passed: the provider
+ *  only reports a window with the next response. */
+export function effectiveUtilization(window: { utilization: number; resetsAt: string | null }, now = Date.now()): number {
+  if (window.resetsAt && new Date(window.resetsAt).getTime() <= now) return 0
+  return window.utilization
+}
+
+export function formatWholePercent(ratio: number): string {
+  return `${Math.round(ratio * 100)}%`
+}
+
+/** Time left before a reset, e.g. "2h 05m" or "3d 4h". */
+export function formatTimeLeft(iso: string | null, now = Date.now()): string {
+  if (!iso) return '—'
+  const minutes = Math.max(0, Math.round((new Date(iso).getTime() - now) / 60_000))
+  if (minutes >= 24 * 60) return `${Math.floor(minutes / (24 * 60))}d ${Math.floor((minutes % (24 * 60)) / 60)}h`
+  return `${Math.floor(minutes / 60)}h ${String(minutes % 60).padStart(2, '0')}m`
+}
+
 export function rangeLabel(range: Range): string {
   switch (range) {
     case '7d':

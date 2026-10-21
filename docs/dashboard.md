@@ -1,14 +1,15 @@
 # Dashboard
 
 The proxy serves a usage console at <http://127.0.0.1:8787/dashboard>. It is a
-React app embedded in the binary, with six pages: Overview, Projects, Models,
-Requests, Sessions and Providers. It has a dark and a light theme, a 24h / 7d /
+React app embedded in the binary, with seven pages: Overview, Projects, Models,
+Requests, Sessions, Quota and Providers. It has a dark and a light theme, a 24h / 7d /
 30d range selector and CSV export. Pages refresh live as requests are recorded,
 and the header shows a Live indicator while the event stream is connected.
 
 - [What is recorded](#what-is-recorded)
 - [Project and session attribution](#project-and-session-attribution)
 - [Cost](#cost)
+- [Quota](#quota)
 - [JSON API](#json-api)
 - [Disabling](#disabling)
 
@@ -61,6 +62,22 @@ project, model and session, and per request. A request without a reported
 price shows `—`, so a known zero is never confused with "unpriced". The
 proxy does not estimate prices.
 
+## Quota
+
+Anthropic reports the Claude subscription quota in the `anthropic-ratelimit-*`
+headers of every response. The proxy stores them, one row per request, in the
+`ratelimit` table of the same database, so the history survives restarts. They
+are the only response headers kept; credentials never are.
+
+The **Quota** page charts the utilization of the 5-hour and weekly windows over
+the selected range and shows which window is limiting. Each rise of a window's
+utilization is charged to the project and session of the request that observed
+it, which tells you where the quota goes. The split is approximate when sessions
+run concurrently, and a drop (a window reset) is not charged. The sidebar shows
+both windows as progress bars on every page.
+
+Providers other than Anthropic send no such headers, so they add no rows.
+
 ## JSON API
 
 The console reads read-only JSON under `/dashboard/api/`:
@@ -72,6 +89,7 @@ The console reads read-only JSON under `/dashboard/api/`:
 | `GET /dashboard/api/models` | Per-model aggregates |
 | `GET /dashboard/api/requests` | The request log (`q`, `status`, `stream`, `limit`) |
 | `GET /dashboard/api/sessions` | Per-session aggregates |
+| `GET /dashboard/api/quota` | Subscription quota: current 5h and weekly windows, utilization series, consumption per project and session |
 | `GET /dashboard/api/providers` | Provider usage merged with the configured routes |
 
 `range` is `24h` (default), `7d` or `30d`; chart buckets are hourly for 24h

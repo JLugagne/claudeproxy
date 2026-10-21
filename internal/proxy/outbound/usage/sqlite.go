@@ -2,6 +2,7 @@ package usage
 
 import (
 	"database/sql"
+	"encoding/json"
 	"log/slog"
 	"os"
 	"path/filepath"
@@ -35,6 +36,13 @@ CREATE TABLE IF NOT EXISTS usage (
 );
 CREATE INDEX IF NOT EXISTS usage_project_ts ON usage(project, ts);
 CREATE INDEX IF NOT EXISTS usage_ts ON usage(ts);
+CREATE TABLE IF NOT EXISTS ratelimit (
+	ts INTEGER NOT NULL,
+	project TEXT NOT NULL,
+	session TEXT NOT NULL,
+	headers TEXT NOT NULL
+);
+CREATE INDEX IF NOT EXISTS ratelimit_ts ON ratelimit(ts);
 `
 
 const insertUsage = `
@@ -44,6 +52,8 @@ INSERT INTO usage (
 	status, duration_ms, ttft_ms, stream, cost_usd, has_cost
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
+
+const insertRateLimit = `INSERT INTO ratelimit (ts, project, session, headers) VALUES (?, ?, ?, ?)`
 
 const (
 	insertBatch   = 64
@@ -177,6 +187,7 @@ func (s *Store) flush(batch []domain.Usage) {
 			s.logger.Warn("usage insert failed", "error", err)
 			continue
 		}
+		s.insertRateLimits(tx, u)
 		inserted = append(inserted, u)
 	}
 	_ = stmt.Close()
@@ -190,6 +201,20 @@ func (s *Store) flush(batch []domain.Usage) {
 		for _, u := range inserted {
 			s.publisher.Publish(u)
 		}
+	}
+}
+
+func (s *Store) insertRateLimits(tx *sql.Tx, u domain.Usage) {
+	if len(u.RateLimits) == 0 {
+		return
+	}
+	headers, err := json.Marshal(u.RateLimits)
+	if err != nil {
+		s.logger.Warn("rate limit encode failed", "error", err)
+		return
+	}
+	if _, err := tx.Exec(insertRateLimit, u.Time.UnixMilli(), u.Project, u.Session, string(headers)); err != nil {
+		s.logger.Warn("rate limit insert failed", "error", err)
 	}
 }
 

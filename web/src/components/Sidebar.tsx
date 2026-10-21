@@ -1,5 +1,6 @@
 import type { Page } from '../router'
 import { NavLink } from './NavLink'
+import { QuotaMeters } from './QuotaMeters'
 
 const analyticsNav: { page: Page; label: string }[] = [
   { page: 'overview', label: 'Overview' },
@@ -7,6 +8,7 @@ const analyticsNav: { page: Page; label: string }[] = [
   { page: 'models', label: 'Models' },
   { page: 'requests', label: 'Requests' },
   { page: 'sessions', label: 'Sessions' },
+  { page: 'quota', label: 'Quota' },
 ]
 
 const systemNav: { page: Page; label: string }[] = [{ page: 'providers', label: 'Providers' }]
@@ -41,6 +43,7 @@ export function Sidebar({ page }: { page: Page }) {
       </nav>
 
       <div className="sidebar-footer">
+        <QuotaMeters />
         <div className="status">
           <span className="dot" aria-hidden="true" />
           Proxy online

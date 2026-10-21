@@ -15,5 +15,6 @@ type MetricsQueries interface {
 	Models(ctx context.Context, r domain.MetricsRange) ([]domain.ModelStat, error)
 	Sessions(ctx context.Context, r domain.MetricsRange, limit int) ([]domain.SessionStat, error)
 	Providers(ctx context.Context, r domain.MetricsRange) ([]domain.ProviderStat, error)
+	RateLimits(ctx context.Context, r domain.MetricsRange) ([]domain.RateLimitSnapshot, error)
 	Requests(ctx context.Context, r domain.MetricsRange, f domain.UsageFilter) ([]domain.UsageRow, int64, error)
 }

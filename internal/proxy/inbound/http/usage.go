@@ -192,3 +192,20 @@ func (u *usageRecorder) timeToFirstToken(start time.Time) time.Duration {
 	}
 	return u.firstTokenAt.Sub(start)
 }
+
+const rateLimitHeaderPrefix = "anthropic-ratelimit-"
+
+func rateLimitHeaders(header http.Header) map[string]string {
+	var limits map[string]string
+	for name, values := range header {
+		lower := strings.ToLower(name)
+		if len(values) == 0 || !strings.HasPrefix(lower, rateLimitHeaderPrefix) {
+			continue
+		}
+		if limits == nil {
+			limits = make(map[string]string)
+		}
+		limits[lower] = values[0]
+	}
+	return limits
+}

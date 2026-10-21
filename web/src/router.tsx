@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState } from 'react'
 
-export const PAGES = ['overview', 'projects', 'models', 'requests', 'sessions', 'providers'] as const
+export const PAGES = ['overview', 'projects', 'models', 'requests', 'sessions', 'quota', 'providers'] as const
 
 export type Page = (typeof PAGES)[number]
 
@@ -12,6 +12,7 @@ export const pageMeta: Record<Page, { title: string; subtitle: string }> = {
   models: { title: 'Models', subtitle: 'Routing and consumption per upstream model' },
   requests: { title: 'Requests', subtitle: 'Every message routed through the proxy' },
   sessions: { title: 'Sessions', subtitle: 'Claude Code sessions and their consumption' },
+  quota: { title: 'Quota', subtitle: 'Subscription usage over the 5-hour and weekly windows' },
   providers: { title: 'Providers', subtitle: 'Upstreams, credentials and routing' },
 }
 

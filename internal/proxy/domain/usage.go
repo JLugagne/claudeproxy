@@ -25,4 +25,8 @@ type Usage struct {
 	// HasCost distinguishes a free request from one the provider did not price.
 	CostUSD float64
 	HasCost bool
+	// RateLimits holds the response's anthropic-ratelimit-* headers, keyed by
+	// lowercase name, so the quota consumption can be tracked over time. It is
+	// nil when the provider sent none.
+	RateLimits map[string]string
 }
