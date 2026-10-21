@@ -9,7 +9,6 @@ Installing takes two steps: run the proxy, then point Claude Code at it.
 - [2. Connect Claude Code](#2-connect-claude-code)
   - [With `setup`](#with-setup)
   - [By hand](#by-hand)
-  - [The `SessionStart` hook](#the-sessionstart-hook)
 - [3. Check it works](#3-check-it-works)
 - [Uninstall](#uninstall)
 
@@ -125,9 +124,8 @@ proxy address.
 
 ### With `setup`
 
-`setup` writes the base URL into `~/.claude/settings.json` and installs the
-[`SessionStart` hook](#the-sessionstart-hook). It is idempotent and keeps your
-other settings.
+`setup` writes the base URL into `~/.claude/settings.json`. It is idempotent and
+keeps your other settings.
 
 ```sh
 go run . setup --base-url http://127.0.0.1:8787
@@ -168,70 +166,6 @@ export ANTHROPIC_BASE_URL=http://127.0.0.1:8787
 
 Claude models keep working exactly as before, with your own login.
 
-### The `SessionStart` hook
-
-The hook is optional. It names the project of a session from its git remote
-(`owner/repo`), else from the repository directory name, else from the working
-directory, and exports it as an `X-Project` header through
-`ANTHROPIC_CUSTOM_HEADERS`.
-
-The proxy does not depend on it. When no `X-Project` header arrives, it takes
-the project from the working directory Claude Code reports in its prompt
-(the last two path segments, e.g. `owner/repo` for
-`~/src/github.com/owner/repo`). Claude Code applies the variables a
-`SessionStart` hook exports to the commands of its Bash tool, so in practice
-the prompt is the usual source. See
-[project and session attribution](dashboard.md#project-and-session-attribution).
-
-To install the hook by hand, save the script as
-`~/.claude/claudeproxy/x-project.sh`:
-
-```sh
-#!/bin/sh
-[ -n "$CLAUDE_ENV_FILE" ] || exit 0
-dir="${CLAUDE_PROJECT_DIR:-$PWD}"
-proj=$(git -C "$dir" remote get-url origin 2>/dev/null | sed -E 's#\.git$##; s#.*[:/]([^/]+/[^/]+)$#\1#')
-proj=${proj:-$(basename "$(git -C "$dir" rev-parse --show-toplevel 2>/dev/null)")}
-proj=${proj:-$dir}
-printf 'export ANTHROPIC_CUSTOM_HEADERS="X-Project: %s"\n' "$proj" >> "$CLAUDE_ENV_FILE"
-```
-
-Make it executable:
-
-```sh
-chmod 700 ~/.claude/claudeproxy/x-project.sh
-```
-
-Then register it in `~/.claude/settings.json`, next to your other hooks. Use
-the absolute path; `~` is not expanded:
-
-```json
-{
-  "hooks": {
-    "SessionStart": [
-      {
-        "hooks": [
-          {
-            "type": "command",
-            "command": "/home/you/.claude/claudeproxy/x-project.sh"
-          }
-        ]
-      }
-    ]
-  }
-}
-```
-
-To set the project for every request regardless of the prompt, export the
-header before starting Claude Code:
-
-```sh
-ANTHROPIC_CUSTOM_HEADERS="X-Project: my-project" claude
-```
-
-The proxy removes `X-Project` before forwarding, so it never reaches a
-provider.
-
 ## 3. Check it works
 
 Check where each model goes:
@@ -254,10 +188,10 @@ Start Claude Code, send a message, then:
 ## Uninstall
 
 1. Remove `ANTHROPIC_BASE_URL` from the `env` object of
-   `~/.claude/settings.json`, and the `SessionStart` entry whose command is
-   `.../claudeproxy/x-project.sh`.
-2. Delete `~/.claude/claudeproxy/`.
-3. Stop the proxy: `docker compose down`, or `docker rm -f claudeproxy`.
-4. Delete the usage database if you do not need it: `./data/usage.db*` with
+   `~/.claude/settings.json`. An earlier version of `setup` also registered a
+   `SessionStart` hook there, whose command is `.../claudeproxy/x-project.sh`:
+   remove that entry too, and delete `~/.claude/claudeproxy/`.
+2. Stop the proxy: `docker compose down`, or `docker rm -f claudeproxy`.
+3. Delete the usage database if you do not need it: `./data/usage.db*` with
    Docker Compose, or `claudeproxy/usage.db*` in the user configuration
    directory otherwise.

@@ -47,7 +47,6 @@ var setupCmd = &cobra.Command{
 		}
 		out := cmd.OutOrStdout()
 		fmt.Fprintf(out, "settings  %s\n", result.SettingsPath)
-		fmt.Fprintf(out, "hook      %s\n", result.ScriptPath)
 		fmt.Fprintf(out, "base URL  %s\n", baseURL)
 		return nil
 	},

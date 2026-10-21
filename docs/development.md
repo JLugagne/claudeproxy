@@ -20,7 +20,7 @@ internal/proxy/outbound/usage/          SQLite usage store: recording and metric
 internal/pkg/config/                    "server" configuration section
 internal/pkg/jsonscan/                  zero-decode top-level JSON field locator
 internal/pkg/apierror/                  Anthropic-shaped error responses
-internal/pkg/setup/                     the setup command: settings.json and SessionStart hook
+internal/pkg/setup/                     the setup command: the base URL in settings.json
 web/                                    React sources of the console (Vite, TypeScript)
 tests/e2e-api/                          end-to-end routing tests with fake providers
 ```

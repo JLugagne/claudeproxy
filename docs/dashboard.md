@@ -35,8 +35,8 @@ providers for an uncompressed response so it can read them.
 
 The **project** of a request is, in order:
 
-1. the `X-Project` request header, when the client sends one (see
-   [the `SessionStart` hook](installation.md#the-sessionstart-hook));
+1. the `X-Project` request header, when the client sends one, for instance
+   with `ANTHROPIC_CUSTOM_HEADERS="X-Project: my-project" claude`;
 2. the working directory Claude Code reports in its prompt
    (`Primary working directory: ...`), reduced to its repository so that a
    subdirectory or a worktree counts as the same project:
