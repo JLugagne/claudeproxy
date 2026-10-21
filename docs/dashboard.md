@@ -65,9 +65,10 @@ proxy does not estimate prices.
 ## Quota
 
 Anthropic reports the Claude subscription quota in the `anthropic-ratelimit-*`
-headers of every response. The proxy stores them, one row per request, in the
-`ratelimit` table of the same database, so the history survives restarts. They
-are the only response headers kept; credentials never are.
+headers of every response. The proxy stores them in the `ratelimit` table of the
+same database, so the history survives restarts: one row per session and per
+30 minutes, holding the last snapshot of that interval. They are the only
+response headers kept; credentials never are.
 
 The **Quota** page charts the utilization of the 5-hour and weekly windows over
 the selected range and shows which window is limiting. Each rise of a window's

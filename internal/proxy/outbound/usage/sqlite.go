@@ -38,6 +38,7 @@ CREATE INDEX IF NOT EXISTS usage_project_ts ON usage(project, ts);
 CREATE INDEX IF NOT EXISTS usage_ts ON usage(ts);
 CREATE TABLE IF NOT EXISTS ratelimit (
 	ts INTEGER NOT NULL,
+	bucket INTEGER NOT NULL DEFAULT 0,
 	project TEXT NOT NULL,
 	session TEXT NOT NULL,
 	headers TEXT NOT NULL
@@ -53,7 +54,15 @@ INSERT INTO usage (
 ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 `
 
-const insertRateLimit = `INSERT INTO ratelimit (ts, project, session, headers) VALUES (?, ?, ?, ?)`
+// RateLimitInterval is the resolution of the quota history: each session keeps
+// the last snapshot of every interval.
+const RateLimitInterval = 30 * time.Minute
+
+const insertRateLimit = `
+INSERT INTO ratelimit (ts, bucket, project, session, headers) VALUES (?, ?, ?, ?, ?)
+ON CONFLICT (bucket, project, session) DO UPDATE SET ts = excluded.ts, headers = excluded.headers
+WHERE excluded.ts >= ratelimit.ts
+`
 
 const (
 	insertBatch   = 64
@@ -100,6 +109,10 @@ func Open(path string, logger *slog.Logger, opts ...Option) (*Store, error) {
 		return nil, err
 	}
 	if _, err := db.Exec(schema); err != nil {
+		_ = db.Close()
+		return nil, err
+	}
+	if err := compactRateLimits(db); err != nil {
 		_ = db.Close()
 		return nil, err
 	}
@@ -213,7 +226,7 @@ func (s *Store) insertRateLimits(tx *sql.Tx, u domain.Usage) {
 		s.logger.Warn("rate limit encode failed", "error", err)
 		return
 	}
-	if _, err := tx.Exec(insertRateLimit, u.Time.UnixMilli(), u.Project, u.Session, string(headers)); err != nil {
+	if _, err := tx.Exec(insertRateLimit, u.Time.UnixMilli(), u.Time.UnixMilli()/RateLimitInterval.Milliseconds(), u.Project, u.Session, string(headers)); err != nil {
 		s.logger.Warn("rate limit insert failed", "error", err)
 	}
 }

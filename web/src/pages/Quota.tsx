@@ -126,7 +126,8 @@ export function Quota({ range }: { range: Range }) {
 
       <NoteBar label="How it is measured">
         Each rise of a window&apos;s utilization is charged to the request that observed it, so concurrent sessions share
-        the credit approximately. A drop is a window reset and is not charged.
+        the credit approximately. Snapshots are kept every 30 minutes per session. A drop is a window reset and is not
+        charged.
       </NoteBar>
     </>
   )

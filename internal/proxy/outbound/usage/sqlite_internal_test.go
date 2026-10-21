@@ -161,3 +161,97 @@ func waitForRateLimits(t *testing.T, store *Store, want int) {
 	}
 	t.Fatalf("ratelimit rows never reached %d", want)
 }
+
+func TestStoreKeepsOneRateLimitRowPerSessionAndHalfHour(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "usage.db")
+	store, err := Open(path, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	limits := func(utilization string) map[string]string {
+		return map[string]string{"anthropic-ratelimit-unified-5h-utilization": utilization}
+	}
+	base := time.Unix(1700000000, 0).Truncate(30 * time.Minute)
+	record := func(offset time.Duration, session, utilization string) {
+		store.Record(domain.Usage{
+			Time:        base.Add(offset),
+			Attribution: domain.Attribution{Project: "owner/repo", Session: session},
+			RateLimits:  limits(utilization),
+		})
+	}
+	record(time.Minute, "s1", "0.10")
+	record(10*time.Minute, "s1", "0.12")
+	record(29*time.Minute, "s1", "0.15")
+	record(20*time.Minute, "s2", "0.16")
+	record(31*time.Minute, "s1", "0.20")
+	if err := store.Close(); err != nil {
+		t.Fatal(err)
+	}
+
+	db, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer db.Close()
+	rows, err := db.Query(`SELECT session, ts, json_extract(headers, '$."anthropic-ratelimit-unified-5h-utilization"') FROM ratelimit ORDER BY ts`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer rows.Close()
+	var got []string
+	for rows.Next() {
+		var (
+			session, utilization string
+			ts                   int64
+		)
+		if err := rows.Scan(&session, &ts, &utilization); err != nil {
+			t.Fatal(err)
+		}
+		got = append(got, session+"@"+time.UnixMilli(ts).Sub(base).String()+"="+utilization)
+	}
+	want := []string{"s2@20m0s=0.16", "s1@29m0s=0.15", "s1@31m0s=0.20"}
+	if len(got) != len(want) {
+		t.Fatalf("rows = %v, want %v", got, want)
+	}
+	for i := range want {
+		if got[i] != want[i] {
+			t.Fatalf("rows = %v, want %v", got, want)
+		}
+	}
+}
+
+func TestOpenCompactsRateLimitRowsWrittenPerRequest(t *testing.T) {
+	path := filepath.Join(t.TempDir(), "usage.db")
+	legacy, err := sql.Open("sqlite", path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, err = legacy.Exec(`
+CREATE TABLE ratelimit (ts INTEGER NOT NULL, project TEXT NOT NULL, session TEXT NOT NULL, headers TEXT NOT NULL);
+INSERT INTO ratelimit VALUES (1700000000000, 'p', 's', '{"v":"old"}');
+INSERT INTO ratelimit VALUES (1700000060000, 'p', 's', '{"v":"new"}');
+INSERT INTO ratelimit VALUES (1700000070000, 'p', 'other', '{"v":"other"}');
+INSERT INTO ratelimit VALUES (1700003600000, 'p', 's', '{"v":"later"}');`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_ = legacy.Close()
+
+	store, err := Open(path, slog.New(slog.DiscardHandler))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = store.Close() })
+
+	var rows int
+	if err := store.db.QueryRow(`SELECT COUNT(*) FROM ratelimit`).Scan(&rows); err != nil {
+		t.Fatal(err)
+	}
+	if rows != 3 {
+		t.Fatalf("rows = %d, want 3 (two legacy rows of one session and half hour merged)", rows)
+	}
+	var headers string
+	if err := store.db.QueryRow(`SELECT headers FROM ratelimit WHERE session = 's' AND ts = 1700000060000`).Scan(&headers); err != nil {
+		t.Fatalf("the newest row of the half hour must survive: %v", err)
+	}
+}
