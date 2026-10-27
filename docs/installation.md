@@ -6,6 +6,7 @@ Installing takes two steps: run the proxy, then point Claude Code at it.
   - [Docker Compose](#docker-compose)
   - [Prebuilt image](#prebuilt-image)
   - [From source](#from-source)
+  - [macOS](#macos)
 - [2. Connect Claude Code](#2-connect-claude-code)
   - [With `setup`](#with-setup)
   - [By hand](#by-hand)
@@ -116,6 +117,31 @@ can write to. Otherwise metrics are disabled and the dashboard says why.
 
 `serve` refuses to bind an address other than loopback unless
 `--allow-non-loopback` is passed; `--listen` overrides `server.listen`.
+
+### macOS
+
+On macOS the proxy runs in Docker, on Apple silicon (linux/arm64 image) as on
+Intel.
+
+Install and start a Docker runtime that provides `docker compose`, such as
+Docker Desktop (`brew install --cask docker`) or OrbStack
+(`brew install --cask orbstack`). Then, from a clone of this repository:
+
+```sh
+git clone https://github.com/JLugagne/claudeproxy.git && cd claudeproxy
+echo "CLAUDEPROXY_UID=$(id -u)" >> .env    # macOS accounts are 501:20, not 1000:1000
+echo "CLAUDEPROXY_GID=$(id -g)" >> .env
+mkdir -p data
+docker compose up -d --build              # listens on 127.0.0.1:8787
+```
+
+The UID and GID keep `./data` owned by you. The container restarts with the
+Docker runtime (`restart: unless-stopped`): enable the runtime's start at
+login option so the proxy is up after a reboot. Your own configuration and
+provider keys are set as described in [Docker Compose](#docker-compose).
+
+`setup` needs Go, which this install does not: connect Claude Code
+[by hand](#by-hand) instead.
 
 ## 2. Connect Claude Code
 

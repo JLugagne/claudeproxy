@@ -44,7 +44,7 @@ The usage console is at <http://127.0.0.1:8787/dashboard>.
 
 | Guide | Contents |
 |---|---|
-| [Installation](docs/installation.md) | Docker Compose, prebuilt image, from source, connecting Claude Code, uninstalling |
+| [Installation](docs/installation.md) | Docker Compose, prebuilt image, from source, macOS, connecting Claude Code, uninstalling |
 | [Configuration](docs/configuration.md) | File location, every setting, providers, routes, provider examples |
 | [Using other models](docs/other-models.md) | Subagents, model environment variables, diverting a Claude tier, OpenAI translation |
 | [Dashboard](docs/dashboard.md) | Usage console, project and session attribution, JSON API, cost |
