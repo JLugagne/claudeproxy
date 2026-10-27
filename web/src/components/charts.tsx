@@ -111,6 +111,12 @@ const QUOTA_SERIES = [
 
 const RANGE_MS: Record<Range, number> = { '24h': 86_400_000, '7d': 7 * 86_400_000, '30d': 30 * 86_400_000 }
 
+/** Matches maxQuotaPoints in the dashboard API, which downsamples the series to this many buckets. */
+const QUOTA_MAX_POINTS = 300
+
+/** Snapshots are kept per 30-minute interval, so two active intervals can sit up to an hour apart. */
+const QUOTA_MIN_GAP_MS = 90 * 60_000
+
 export function QuotaLegend() {
   return (
     <div className="legend">
@@ -131,12 +137,21 @@ export function QuotaChart({ points, range }: { points: QuotaPoint[]; range: Ran
   const x = (time: string) => Math.min(100, Math.max(0, ((new Date(time).getTime() - start) / (end - start)) * 100))
   const ticks = [1, 0.75, 0.5, 0.25, 0]
 
+  const maxGap = Math.max(QUOTA_MIN_GAP_MS, (2 * RANGE_MS[range]) / QUOTA_MAX_POINTS)
+
   const path = (key: 'fiveHour' | 'sevenDay') => {
     let d = ''
+    let previous: number | null = null
     for (const point of points) {
       const value = point[key]
-      if (value === null) continue
-      d += `${d === '' ? 'M' : 'L'}${x(point.time).toFixed(2)},${((1 - Math.min(1, value)) * 100).toFixed(2)} `
+      if (value === null) {
+        previous = null
+        continue
+      }
+      const time = new Date(point.time).getTime()
+      const xy = `${x(point.time).toFixed(2)},${((1 - Math.min(1, value)) * 100).toFixed(2)}`
+      d += previous === null || time - previous > maxGap ? `M${xy} L${xy} ` : `L${xy} `
+      previous = time
     }
     return d
   }
@@ -167,6 +182,7 @@ export function QuotaChart({ points, range }: { points: QuotaPoint[]; range: Ran
                 stroke={series.color}
                 strokeWidth={2}
                 strokeLinejoin="round"
+                strokeLinecap="round"
                 vectorEffect="non-scaling-stroke"
               />
             ))}
